@@ -1,0 +1,37 @@
+from aiogram import Router
+
+from .start import router as start_router
+from .goals import router as goals_router
+from .habits import router as habits_router
+from .finance import router as finance_router
+from .finance_upload import router as finance_upload_router
+from .routines import router as routines_router
+from .nutrition import router as nutrition_router
+from .productivity import router as productivity_router
+from .settings import router as settings_router
+from .menus import router as menus_router
+from .motivation import router as motivation_router
+from .challenges import router as challenges_router
+from .test_reminders import router as test_reminders_router
+from .settings_menu import router as settings_menu_router
+
+
+def setup_routers() -> Router:
+    router = Router()
+    router.include_router(start_router)
+    router.include_router(goals_router)
+    router.include_router(habits_router)
+    router.include_router(finance_router)
+    router.include_router(finance_upload_router)
+    router.include_router(routines_router)
+    router.include_router(nutrition_router)
+    router.include_router(productivity_router)
+    router.include_router(settings_router)
+    router.include_router(menus_router)
+    router.include_router(motivation_router)
+    router.include_router(challenges_router)
+    router.include_router(test_reminders_router)
+    router.include_router(settings_menu_router)
+    return router
+
+
