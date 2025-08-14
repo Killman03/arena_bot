@@ -14,6 +14,9 @@ class GoalScope(str, Enum):
     five_years = "5y"
     year = "1y"
     month = "1m"
+    week = "1w"
+    three_months = "3m"
+    six_months = "6m"
     day = "1d"
 
 
@@ -54,6 +57,25 @@ class ABAnalysis(Base):
     current_state: Mapped[str] = mapped_column(Text)
     desired_state: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+
+
+class GoalReminder(Base):
+    """Reminders for goals with motivational messages."""
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), index=True)
+    goal_id: Mapped[int] = mapped_column(ForeignKey("goal.id", ondelete="CASCADE"), index=True)
+    reminder_time: Mapped[str] = mapped_column(String(5))  # Format: "HH:MM"
+    is_active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    goal: Mapped[Goal] = relationship("Goal", back_populates="reminders")
+
+
+# Добавляем обратную связь в Goal
+Goal.reminders = relationship("GoalReminder", back_populates="goal", cascade="all, delete-orphan")
 
 
 

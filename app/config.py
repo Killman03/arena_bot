@@ -10,10 +10,15 @@ class Settings(BaseSettings):
     bot_token: str = Field(alias="BOT_TOKEN")
     database_url: str = Field(alias="DATABASE_URL")
 
-    # Notion
-    notion_api_key: str = Field(alias="NOTION_API_KEY")
-    notion_database_goals: str = Field(alias="NOTION_DB_GOALS")
-    notion_database_tasks: str = Field(alias="NOTION_DB_TASKS")
+    # Notion API
+    notion_api_key: str
+    notion_db_goals: str
+    notion_db_tasks: str
+
+    # Google Fit Integration
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uri: str = "http://localhost:8000/auth/google/callback"
 
     # DeepSeek (LLM) API
     deepseek_api_key: str = Field(alias="DEEPSEEK_API_KEY")

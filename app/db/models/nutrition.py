@@ -44,4 +44,31 @@ class NutritionLog(Base):
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
 
+class CookingSession(Base):
+    """Сессия готовки на несколько дней."""
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), index=True)
+    cooking_date: Mapped[date] = mapped_column()
+    target_days: Mapped[int] = mapped_column(default=3)  # На сколько дней готовим
+    calories_per_day: Mapped[int | None] = mapped_column(nullable=True)
+    shopping_list: Mapped[str | None] = mapped_column(Text, nullable=True)  # Список продуктов от ИИ
+    instructions: Mapped[str | None] = mapped_column(Text, nullable=True)  # Инструкции от ИИ
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # Заметки пользователя
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+
+
+class NutritionReminder(Base):
+    """Настройки напоминаний о готовке."""
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), index=True, unique=True)
+    cooking_days: Mapped[str] = mapped_column(String(50), default="wednesday,sunday")  # Дни готовки
+    cooking_time: Mapped[str] = mapped_column(String(10), default="18:00")  # Время готовки
+    reminder_time: Mapped[str] = mapped_column(String(10), default="17:00")  # Время напоминания
+    shopping_reminder_time: Mapped[str] = mapped_column(String(10), default="16:00")  # Время напоминания о покупках
+    is_active: Mapped[bool] = mapped_column(default=True)
+    target_calories: Mapped[int | None] = mapped_column(nullable=True)
+    body_goal: Mapped[str | None] = mapped_column(String(50), nullable=True)  # "cut", "bulk", "maintain"
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 

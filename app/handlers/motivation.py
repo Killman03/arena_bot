@@ -158,11 +158,12 @@ async def set_vision(message: types.Message) -> None:
             mot = Motivation(user_id=db_user.id, year=datetime.utcnow().year)
             session.add(mot)
         mot.vision = vision
+    status_msg = await message.answer("⏳ Генерирую подсказку по видению...")
     try:
         hint = await deepseek_complete(f"Улучшить и усилить видение: {vision}")
-        await message.answer("Видение сохранено ✅\nПодсказка ИИ:\n" + hint)
+        await status_msg.edit_text("Видение сохранено ✅\nПодсказка ИИ:\n" + hint)
     except Exception:
-        await message.answer("Видение сохранено ✅")
+        await status_msg.edit_text("Видение сохранено ✅")
 
 
 @router.message(Command("set_mission"))
@@ -183,11 +184,12 @@ async def set_mission(message: types.Message) -> None:
             mot = Motivation(user_id=db_user.id, year=datetime.utcnow().year)
             session.add(mot)
         mot.mission = mission
+    status_msg = await message.answer("⏳ Генерирую подсказку по миссии...")
     try:
         hint = await deepseek_complete(f"Улучшить миссию: {mission}")
-        await message.answer("Миссия сохранена ✅\nПодсказка ИИ:\n" + hint)
+        await status_msg.edit_text("Миссия сохранена ✅\nПодсказка ИИ:\n" + hint)
     except Exception:
-        await message.answer("Миссия сохранена ✅")
+        await status_msg.edit_text("Миссия сохранена ✅")
 
 
 @router.message(Command("set_values"))

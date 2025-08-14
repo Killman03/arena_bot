@@ -7,6 +7,8 @@ from app.keyboards.common import (
     goals_menu,
     habits_menu,
     finance_menu,
+    health_menu,
+    nutrition_menu,
     back_main_menu,
     goals_list_keyboard,
 )
@@ -73,6 +75,18 @@ async def help_callback(cb: types.CallbackQuery) -> None:
 @router.callback_query(F.data == "menu_finance")
 async def menu_finance(cb: types.CallbackQuery) -> None:
     await cb.message.edit_text("Финансы:", reply_markup=finance_menu())
+    await cb.answer()
+
+
+@router.callback_query(F.data == "menu_nutrition")
+async def menu_nutrition(cb: types.CallbackQuery) -> None:
+    await cb.message.edit_text("Питание:", reply_markup=nutrition_menu())
+    await cb.answer()
+
+
+@router.callback_query(F.data == "menu_health")
+async def menu_health(cb: types.CallbackQuery) -> None:
+    await cb.message.edit_text("Здоровье:", reply_markup=health_menu())
     await cb.answer()
 
 

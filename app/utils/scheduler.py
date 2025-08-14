@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -10,6 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.services.reminders import send_daily_principle, send_daily_motivation
+from app.services.nutrition_reminders import (
+    send_cooking_day_reminders,
+    send_shopping_day_reminders,
+)
+from app.services.health_reminders import send_health_daily_prompt, sync_google_fit_data
 from sqlalchemy import select
 from app.db.models import User, Habit, HabitLog, Challenge
 
@@ -29,6 +34,13 @@ class AppScheduler:
         self.scheduler.add_job(self._daily_motivation_job, CronTrigger(hour=8, minute=0))
         # персональные напоминания по привычкам: проверка каждые 60 секунд
         self.scheduler.add_job(self._habit_reminders_job, IntervalTrigger(seconds=60))
+        # Напоминания по готовке и спискам покупок (ежечасная проверка времени пользователей)
+        self.scheduler.add_job(self._nutrition_cooking_job, IntervalTrigger(minutes=1))
+        self.scheduler.add_job(self._nutrition_shopping_job, IntervalTrigger(minutes=1))
+        # Здоровье: ежедневные напоминания о вводе показателей
+        self.scheduler.add_job(self._health_daily_prompt_job, IntervalTrigger(minutes=1))
+        # Google Fit: автоматическая синхронизация данных
+        self.scheduler.add_job(self._google_fit_sync_job, IntervalTrigger(hours=6))  # Каждые 6 часов
         self.scheduler.start()
 
     async def _daily_principle_job(self) -> None:
@@ -41,8 +53,7 @@ class AppScheduler:
 
     async def _habit_reminders_job(self) -> None:
         """Check per-user habit reminder times and send nudges if within a small window."""
-from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
+        from zoneinfo import ZoneInfo
 
         # Use UTC for base moment and convert per-user timezone for comparisons
         now_utc = datetime.now(timezone.utc)
@@ -88,5 +99,21 @@ from zoneinfo import ZoneInfo
                         await self.bot.send_message(owner.telegram_id, f"🏆 Напоминание по челленджу: {ch.title} ({owner_tz})")
                     except Exception:
                         continue
+
+    async def _nutrition_cooking_job(self) -> None:
+        async with self.session_factory() as session:  # type: ignore[misc]
+            await send_cooking_day_reminders(self.bot, session)
+
+    async def _nutrition_shopping_job(self) -> None:
+        async with self.session_factory() as session:  # type: ignore[misc]
+            await send_shopping_day_reminders(self.bot, session)
+
+    async def _health_daily_prompt_job(self) -> None:
+        async with self.session_factory() as session:  # type: ignore[misc]
+            await send_health_daily_prompt(self.bot, session)
+
+    async def _google_fit_sync_job(self) -> None:
+        async with self.session_factory() as session:  # type: ignore[misc]
+            await sync_google_fit_data(self.bot, session)
 
 

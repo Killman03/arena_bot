@@ -14,6 +14,8 @@ from .motivation import router as motivation_router
 from .challenges import router as challenges_router
 from .test_reminders import router as test_reminders_router
 from .settings_menu import router as settings_menu_router
+from .analysis import router as analysis_router
+from .health import router as health_router
 
 
 def setup_routers() -> Router:
@@ -32,6 +34,8 @@ def setup_routers() -> Router:
     router.include_router(challenges_router)
     router.include_router(test_reminders_router)
     router.include_router(settings_menu_router)
+    router.include_router(analysis_router)
+    router.include_router(health_router)
     return router
 
 

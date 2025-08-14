@@ -1,4 +1,4 @@
-from __future__ import annotations
+454from __future__ import annotations
 
 from datetime import date
 
@@ -73,14 +73,15 @@ async def log_habit(message: types.Message) -> None:
             return
         session.add(HabitLog(habit_id=habit.id, date=log_date, value=value))
     # AI: короткая обратная связь
+    status_msg = await message.answer("⏳ Генерирую обратную связь...")
     try:
         feedback = await deepseek_complete(
             f"Пользователь логирует привычку '{name}' на значение {value}. Дай краткую мотивационную обратную связь одним абзацем.",
             system="Ты коуч-мотиватор",
         )
-        await message.answer("Записано ✅\n" + feedback)
+        await status_msg.edit_text("Записано ✅\n" + feedback)
     except Exception:
-        await message.answer("Записано ✅")
+        await status_msg.edit_text("Записано ✅")
 
 
 @router.message(Command("remind_habit"))
