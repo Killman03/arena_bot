@@ -1,112 +1,120 @@
-from aiogram import Bot
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from datetime import datetime, timedelta
+from __future__ import annotations
+
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-from app.db.models import User, HealthMetric, HealthReminder
+from aiogram import Bot
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.config import settings
+from app.db.models import User, HealthDailyReminder, GoogleFitToken
 
 
 async def send_health_daily_prompt(bot: Bot, session: AsyncSession) -> None:
-    """Send daily health prompts to users"""
-    try:
-        users = (await session.execute(select(User))).scalars().all()
-        
-        for user in users:
-            try:
-                user_tz = user.timezone or settings.default_timezone
-                user_now = datetime.now(ZoneInfo(user_tz))
-                
-                # Send health prompt at 9 AM user time
-                if user_now.hour == 9 and user_now.minute == 0:
-                    # Check if user has recent health metrics
-                    yesterday = user_now - timedelta(days=1)
-                    recent_metrics = await session.execute(
-                        select(HealthMetric).where(
-                            HealthMetric.user_id == user.id,
-                            HealthMetric.recorded_at >= yesterday
-                        )
-                    )
-                    recent_metrics = recent_metrics.scalars().all()
-                    
-                    if not recent_metrics:
-                        await bot.send_message(
-                            user.telegram_id,
-                            "🏥 Доброе утро! Не забудьте записать показатели здоровья за сегодня.\n"
-                            "Используйте /health_metric для добавления метрик."
-                        )
-                    else:
-                        await bot.send_message(
-                            user.telegram_id,
-                            "🏥 Доброе утро! Отлично, что вы следите за здоровьем! 💪"
-                        )
-            except Exception as e:
-                print(f"Error sending health prompt to user {user.id}: {e}")
-                continue
-    except Exception as e:
-        print(f"Error in health daily prompt job: {e}")
+    now_utc = datetime.now(timezone.utc)
+    users = (await session.execute(select(User))).scalars().all()
+    for u in users:
+        tz = u.timezone or settings.default_timezone
+        try:
+            user_now = now_utc.astimezone(ZoneInfo(tz))
+        except Exception:
+            user_now = now_utc.astimezone(ZoneInfo(settings.default_timezone))
+        rec = (
+            await session.execute(select(HealthDailyReminder).where(HealthDailyReminder.user_id == u.id))
+        ).scalar_one_or_none()
+        if not rec or not rec.is_active:
+            continue
+        if user_now.strftime("%H:%M") != rec.time_str:
+            continue
+        try:
+            await bot.send_message(
+                u.telegram_id,
+                "🔔 Пора записать показатели здоровья: шаги, сон, вес и др. Зайдите в '🩺 Здоровье' → '📈 Трекинг показателей'.",
+            )
+        except Exception:
+            continue
 
 
 async def sync_google_fit_data(bot: Bot, session: AsyncSession) -> None:
-    """Sync Google Fit data for users with connected accounts"""
+    """Автоматическая синхронизация данных Google Fit и Google Drive для всех подключенных пользователей."""
     try:
-        # This would integrate with Google Fit API
-        # For now, just log that the job ran
-        print("Google Fit sync job executed - would sync data if API was configured")
+        from app.services.google_fit import GoogleFitService
+        from app.services.google_drive import GoogleDriveService
         
-        # In a real implementation, you would:
-        # 1. Get users with Google Fit tokens
-        # 2. Use Google Fit API to fetch data
-        # 3. Store the data in HealthMetric table
-        # 4. Send notifications about new data
+        # Получаем всех пользователей с подключенными интеграциями
+        google_tokens = (await session.execute(select(GoogleFitToken))).scalars().all()
         
-    except Exception as e:
-        print(f"Error in Google Fit sync job: {e}")
-
-
-async def send_health_reminder_notifications(bot: Bot, session: AsyncSession) -> None:
-    """Send notifications for scheduled health reminders"""
-    try:
-        now = datetime.now()
+        if not google_tokens:
+            return
         
-        # Get active health reminders
-        reminders = await session.execute(
-            select(HealthReminder).where(
-                HealthReminder.is_active == True,
-                HealthReminder.reminder_time <= now
-            )
-        )
-        reminders = reminders.scalars().all()
-        
-        for reminder in reminders:
+        for token in google_tokens:
             try:
-                # Get user for this reminder
-                user = await session.execute(
-                    select(User).where(User.id == reminder.user_id)
-                )
-                user = user.scalar_one_or_none()
+                # Конвертируем токен в словарь
+                credentials_dict = {
+                    'token': token.access_token,
+                    'refresh_token': token.refresh_token,
+                    'token_uri': token.token_uri,
+                    'client_id': token.client_id,
+                    'client_secret': token.client_secret,
+                    'scopes': token.scopes.split(',')
+                }
                 
-                if user:
-                    await bot.send_message(
-                        user.telegram_id,
-                        f"🏥 Напоминание о здоровье: {reminder.message}"
-                    )
-                    
-                    # If it's a recurring reminder, update the next reminder time
-                    if reminder.is_recurring and reminder.recurrence_pattern:
-                        if reminder.recurrence_pattern == "daily":
-                            reminder.reminder_time = reminder.reminder_time + timedelta(days=1)
-                        elif reminder.recurrence_pattern == "weekly":
-                            reminder.reminder_time = reminder.reminder_time + timedelta(weeks=1)
-                        elif reminder.recurrence_pattern == "monthly":
-                            reminder.reminder_time = reminder.reminder_time + timedelta(days=30)
-                    
-                    await session.commit()
-                    
+                # Выбираем сервис в зависимости от типа интеграции
+                if token.integration_type == "google_drive":
+                    google_service = GoogleDriveService()
+                    result = await google_service.sync_health_data_from_drive(session, token.user_id, credentials_dict, days_back=1)
+                    service_name = "Google Drive"
+                else:
+                    google_service = GoogleFitService()
+                    result = await google_service.sync_health_data(session, token.user_id, credentials_dict, days_back=1)
+                    service_name = "Google Fit"
+                
+                if 'error' not in result:
+                    # Уведомляем пользователя об успешной синхронизации
+                    user = (await session.execute(select(User).where(User.id == token.user_id))).scalar_one()
+                    if user:
+                        if token.integration_type == "google_drive":
+                            text = f"🔄 {service_name}: данные синхронизированы\n\n"
+                            text += f"📁 Обработан файл: {result.get('file_processed', 'Неизвестно')}\n\n"
+                            
+                            summary = result.get('data_summary', {})
+                            if summary.get('steps_entries'):
+                                text += f"🚶 Записей шагов: {summary['steps_entries']}\n"
+                            if summary.get('calories_entries'):
+                                text += f"🔥 Записей калорий: {summary['calories_entries']}\n"
+                            if summary.get('sleep_entries'):
+                                text += f"😴 Записей сна: {summary['sleep_entries']}\n"
+                            if summary.get('heart_rate_entries'):
+                                text += f"❤️ Записей пульса: {summary['heart_rate_entries']}\n"
+                            if summary.get('weight_entries'):
+                                text += f"⚖️ Записей веса: {summary['weight_entries']}\n"
+                            if summary.get('blood_pressure_entries'):
+                                text += f"🩸 Записей давления: {summary['blood_pressure_entries']}\n"
+                        else:
+                            text = f"🔄 {service_name}: данные синхронизированы\n\n"
+                            if result.get('steps'):
+                                text += f"🚶 Шаги: {result['steps']}\n"
+                            if result.get('calories'):
+                                text += f"🔥 Калории: {result['calories']}\n"
+                            if result.get('sleep_minutes'):
+                                text += f"😴 Сон: {result['sleep_minutes']} мин\n"
+                            if result.get('heart_rate'):
+                                text += f"❤️ Пульс: {result['heart_rate']} уд/мин\n"
+                            if result.get('weight'):
+                                text += f"⚖️ Вес: {result['weight']} кг\n"
+                        
+                        try:
+                            await bot.send_message(user.telegram_id, text)
+                        except Exception:
+                            continue
+                            
             except Exception as e:
-                print(f"Error sending health reminder {reminder.id}: {e}")
+                # Логируем ошибку, но продолжаем с другими пользователями
+                print(f"Error syncing {token.integration_type} for user {token.user_id}: {e}")
                 continue
                 
     except Exception as e:
-        print(f"Error in health reminder notifications job: {e}")
+        print(f"Error in Google integration sync job: {e}")
+
+

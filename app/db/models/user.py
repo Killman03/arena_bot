@@ -1,28 +1,29 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean
-from sqlalchemy.sql import func
-from sqlalchemy.orm import relationship
-from app.db.base import Base
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Optional
+
+from sqlalchemy import BigInteger, JSON, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from ..base import Base
 
 
 class User(Base):
-    __tablename__ = "users"
+    """Telegram user entity used across the app."""
 
-    id = Column(Integer, primary_key=True, index=True)
-    telegram_id = Column(Integer, unique=True, index=True, nullable=False)
-    username = Column(String, nullable=True)
-    first_name = Column(String, nullable=True)
-    last_name = Column(String, nullable=True)
-    is_active = Column(Boolean, default=True)
-    timezone = Column(String, default="UTC", nullable=True)
-    notification_preferences = Column(String, nullable=True)  # JSON string for user preferences
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
+    username: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    first_name: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    last_name: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    timezone: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    notification_preferences: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    health_metrics = relationship("HealthMetric", back_populates="user")
-    health_goals = relationship("HealthGoal", back_populates="user")
-    health_reminders = relationship("HealthReminder", back_populates="user")
-    google_fit_token = relationship("GoogleFitToken", back_populates="user", uselist=False)
+    interactions = relationship("Interaction", back_populates="user")
 
-    def __repr__(self):
-        return f"<User(id={self.id}, telegram_id={self.telegram_id}, username='{self.username}')>"
+

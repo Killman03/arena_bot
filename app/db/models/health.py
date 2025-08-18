@@ -1,76 +1,70 @@
-from sqlalchemy import Column, Integer, String, DateTime, Float, Text, ForeignKey, Boolean
-from sqlalchemy.sql import func
-from sqlalchemy.orm import relationship
-from app.db.base import Base
+from __future__ import annotations
+
+from datetime import date, datetime
+from typing import Optional
+
+from sqlalchemy import ForeignKey, String, JSON, Text
+from sqlalchemy.orm import Mapped, mapped_column
+
+from ..base import Base
 
 
 class HealthMetric(Base):
-    __tablename__ = "health_metrics"
+    """Aggregated daily health metrics per user."""
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    metric_type = Column(String, nullable=False)  # weight, steps, heart_rate, etc.
-    value = Column(Float, nullable=False)
-    unit = Column(String, nullable=True)  # kg, steps, bpm, etc.
-    recorded_at = Column(DateTime(timezone=True), server_default=func.now())
-    notes = Column(Text, nullable=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), index=True)
+    day: Mapped[date] = mapped_column(index=True)
 
-    user = relationship("User", back_populates="health_metrics")
+    steps: Mapped[Optional[int]] = mapped_column(nullable=True)
+    calories: Mapped[Optional[int]] = mapped_column(nullable=True)
+    sleep_minutes: Mapped[Optional[int]] = mapped_column(nullable=True)
+    heart_rate_resting: Mapped[Optional[int]] = mapped_column(nullable=True)
+    weight_kg: Mapped[Optional[float]] = mapped_column(nullable=True)
+    systolic: Mapped[Optional[int]] = mapped_column(nullable=True)
+    diastolic: Mapped[Optional[int]] = mapped_column(nullable=True)
+    source: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
 
-    def __repr__(self):
-        return f"<HealthMetric(id={self.id}, type='{self.metric_type}', value={self.value})>"
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
 
 class HealthGoal(Base):
-    __tablename__ = "health_goals"
+    """Simple per-metric goals (e.g., 8000 steps/day)."""
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    goal_type = Column(String, nullable=False)  # weight_loss, muscle_gain, etc.
-    target_value = Column(Float, nullable=False)
-    current_value = Column(Float, nullable=True)
-    unit = Column(String, nullable=True)
-    deadline = Column(DateTime(timezone=True), nullable=True)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    user = relationship("User", back_populates="health_goals")
-
-    def __repr__(self):
-        return f"<HealthGoal(id={self.id}, type='{self.goal_type}', target={self.target_value})>"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), index=True)
+    metric: Mapped[str] = mapped_column(String(32), index=True)  # steps|sleep|calories|weight|hr|bp
+    period: Mapped[str] = mapped_column(String(16), default="daily")  # daily|weekly
+    target_value: Mapped[float]
+    is_active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
 
 class HealthReminder(Base):
-    __tablename__ = "health_reminders"
+    """Daily reminder to log health metrics at a specific time."""
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    reminder_type = Column(String, nullable=False)  # medication, exercise, checkup, etc.
-    message = Column(Text, nullable=False)
-    reminder_time = Column(DateTime(timezone=True), nullable=False)
-    is_recurring = Column(Boolean, default=False)
-    recurrence_pattern = Column(String, nullable=True)  # daily, weekly, monthly
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    user = relationship("User", back_populates="health_reminders")
-
-    def __repr__(self):
-        return f"<HealthReminder(id={self.id}, type='{self.reminder_type}', time='{self.reminder_time}')>"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), index=True, unique=True)
+    time_str: Mapped[str] = mapped_column(String(10), default="21:00")  # HH:MM
+    is_active: Mapped[bool] = mapped_column(default=True)
+    metrics_mask: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)  # e.g. "steps,sleep,weight"
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class GoogleFitToken(Base):
-    __tablename__ = "google_fit_tokens"
+    """Google OAuth tokens for users (Google Fit or Google Drive)."""
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True)
-    access_token = Column(Text, nullable=False)
-    refresh_token = Column(Text, nullable=False)
-    expires_at = Column(DateTime(timezone=True), nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), index=True, unique=True)
+    integration_type: Mapped[str] = mapped_column(String(32), default="google_fit")  # google_fit or google_drive
+    access_token: Mapped[str] = mapped_column(Text)
+    refresh_token: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    token_uri: Mapped[str] = mapped_column(String(256))
+    client_id: Mapped[str] = mapped_column(String(256))
+    client_secret: Mapped[str] = mapped_column(String(256))
+    scopes: Mapped[str] = mapped_column(Text)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    user = relationship("User", back_populates="google_fit_token")
 
-    def __repr__(self):
-        return f"<GoogleFitToken(id={self.id}, user_id={self.user_id})>"
