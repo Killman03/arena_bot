@@ -6,12 +6,12 @@ import logging
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 
-from .config import settings
-from .handlers import setup_routers
-from .logging_config import setup_logging
-from .db.session import SessionLocal, create_all
-from .utils.scheduler import AppScheduler
-from .middlewares import InteractionLoggingMiddleware
+from app.config import settings
+from app.handlers import setup_routers
+from app.logging_config import setup_logging
+from app.db.session import SessionLocal, create_all
+from app.utils.scheduler import AppScheduler
+from app.middlewares import InteractionLoggingMiddleware
 
 
 async def main() -> None:

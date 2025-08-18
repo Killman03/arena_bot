@@ -36,3 +36,6 @@ class InteractionCreate(BaseModel):
 
 
 
+
+
+

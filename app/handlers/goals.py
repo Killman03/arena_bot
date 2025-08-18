@@ -442,12 +442,12 @@ async def goals_edit_start(cb: types.CallbackQuery) -> None:
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
     
-            await cb.message.edit_text(
-            "📝 Редактирование целей:\n\n"
-            "Выберите цель для редактирования:",
-            reply_markup=keyboard,
-            parse_mode=None
-        )
+    await cb.message.edit_text(
+        "📝 Редактирование целей:\n\n"
+        "Выберите цель для редактирования:",
+        reply_markup=keyboard,
+        parse_mode=None
+    )
     await cb.answer()
 
 
@@ -499,13 +499,13 @@ async def goals_reminders(cb: types.CallbackQuery) -> None:
         ).all()
         
         if not reminders:
-                    await cb.message.edit_text(
-            "⏰ Напоминания по целям:\n\n"
-            "У вас нет активных напоминаний по целям.\n\n"
-            "Напоминания создаются автоматически при создании цели.",
-            reply_markup=back_main_menu(),
-            parse_mode=None
-        )
+            await cb.message.edit_text(
+                "⏰ Напоминания по целям:\n\n"
+                "У вас нет активных напоминаний по целям.\n\n"
+                "Напоминания создаются автоматически при создании цели.",
+                reply_markup=back_main_menu(),
+                parse_mode=None
+            )
             await cb.answer()
             return
         
