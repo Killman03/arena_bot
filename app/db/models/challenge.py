@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import ForeignKey, String, Date
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..base import Base
@@ -19,6 +19,7 @@ class Challenge(Base):
     is_active: Mapped[bool] = mapped_column(default=True)
     # Mon..Sun mask (1=notify, 0=skip). Default: 1111110 (daily except Sunday)
     days_mask: Mapped[str] = mapped_column(String(7), default="1111110")
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)  # Дата окончания челленджа
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
 

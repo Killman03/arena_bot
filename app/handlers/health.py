@@ -845,16 +845,57 @@ async def google_drive_disconnect(cb: types.CallbackQuery) -> None:
     await health_integrations(cb)
 
 
-def _split_into_two_messages(text: str, max_len: int = 3800) -> list[str]:
+def _split_into_two_messages(text: str, max_len: int = 3000) -> list[str]:
+    """Разбить текст на несколько сообщений для лучшей читаемости"""
     if not text:
         return []
+    
+    # Если текст короткий, не разбиваем
     if len(text) <= max_len:
         return [text]
+    
+    # Если текст очень длинный (>4000), разбиваем на 3 части
+    if len(text) > 4000:
+        print(f"DEBUG: Текст очень длинный ({len(text)} символов), разбиваю на 3 части")
+        part_size = len(text) // 3
+        
+        # Ищем хорошие точки разрыва
+        split1 = part_size
+        split2 = part_size * 2
+        
+        # Ищем ближайшие переносы строк или пробелы
+        for i in range(part_size - 100, part_size + 100):
+            if i < 0 or i >= len(text):
+                continue
+            if text[i] == '\n' or text[i] == ' ':
+                split1 = i + 1
+                break
+        
+        for i in range(part_size * 2 - 100, part_size * 2 + 100):
+            if i < 0 or i >= len(text):
+                continue
+            if text[i] == '\n' or text[i] == ' ':
+                split2 = i + 1
+                break
+        
+        part1 = text[:split1].strip()
+        part2 = text[split1:split2].strip()
+        part3 = text[split2:].strip()
+        
+        if part1 and part2 and part3:
+            return [part1, part2, part3]
+        elif part1 and part2:
+            return [part1, part2]
+        else:
+            return [text]
+    
+    # Стандартное разбиение на 2 части
     paragraphs = text.split("\n\n")
     total_len = len(text)
     target = total_len // 2
     part1 = []
     len1 = 0
+    
     for p in paragraphs:
         block = p + "\n\n"
         if len1 + len(block) <= max_len and (len1 + len(block) <= target or len1 == 0):
@@ -862,13 +903,36 @@ def _split_into_two_messages(text: str, max_len: int = 3800) -> list[str]:
             len1 += len(block)
         else:
             break
+    
     p1 = "".join(part1).rstrip()
     rest = text[len(p1):].lstrip()
+    
     if not p1:
         p1 = text[:max_len]
         rest = text[max_len:]
+    
     if len(rest) <= max_len:
         return [p1, rest] if rest else [p1]
-    return [p1, rest[:max_len - 1] + "…"]
+    
+    # Если вторая часть слишком длинная, разбиваем её тоже
+    if len(rest) > max_len:
+        print(f"DEBUG: Вторая часть слишком длинная ({len(rest)} символов), разбиваю её")
+        mid_point = len(rest) // 2
+        for i in range(mid_point - 100, mid_point + 100):
+            if i < 0 or i >= len(rest):
+                continue
+            if rest[i] == '\n' or rest[i] == ' ':
+                mid_point = i + 1
+                break
+        
+        part2 = rest[:mid_point].strip()
+        part3 = rest[mid_point:].strip()
+        
+        if part2 and part3:
+            return [p1, part2, part3]
+        else:
+            return [p1, rest[:max_len - 1] + "…"]
+    
+    return [p1, rest]
 
 

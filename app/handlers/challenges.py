@@ -24,6 +24,7 @@ class ChallengeForm(StatesGroup):
     title = State()
     description = State()
     time_str = State()
+    end_date = State()
 
 
 @router.callback_query(F.data == "menu_challenges")
@@ -43,7 +44,12 @@ async def ch_list(cb: types.CallbackQuery) -> None:
         items = (
             await session.execute(select(Challenge).where(Challenge.user_id == db_user.id))
         ).scalars().all()
-    ch_items = [(c.id, f"{'🟢' if c.is_active else '🔴'} {c.title} ({c.time_str})") for c in items]
+    
+    ch_items = []
+    for c in items:
+        end_date_text = f" до {c.end_date.strftime('%d.%m')}" if c.end_date else ""
+        ch_items.append((c.id, f"{'🟢' if c.is_active else '🔴'} {c.title} ({c.time_str}){end_date_text}"))
+    
     await cb.message.edit_text("Ваши челленджи:", reply_markup=challenges_list_keyboard(ch_items))
     await cb.answer()
 
@@ -77,22 +83,48 @@ async def ch_add_time(message: types.Message, state: FSMContext) -> None:
     if len(time_str) != 5 or time_str[2] != ":":
         await message.answer("Неверный формат, используйте HH:MM. Попробуйте снова:")
         return
+    
+    await state.update_data(time_str=time_str)
+    await state.set_state(ChallengeForm.end_date)
+    await message.answer("Введите дату окончания челленджа в формате ДД.ММ.ГГГГ (или '-' чтобы без срока):")
+
+@router.message(ChallengeForm.end_date)
+async def ch_add_end_date(message: types.Message, state: FSMContext) -> None:
+    end_date_str = (message.text or "").strip()
     data = await state.get_data()
+    
+    # Парсим дату окончания
+    end_date = None
+    if end_date_str != "-":
+        try:
+            from datetime import datetime
+            end_date = datetime.strptime(end_date_str, "%d.%m.%Y").date()
+            if end_date <= date.today():
+                await message.answer("Дата окончания должна быть в будущем. Попробуйте снова:")
+                return
+        except ValueError:
+            await message.answer("Неверный формат даты. Используйте ДД.ММ.ГГГГ или '-' для пропуска:")
+            return
+    
     user = message.from_user
     if not user:
         return
+    
     async with session_scope() as session:
         db_user = (await session.execute(select(User).where(User.telegram_id == user.id))).scalar_one()
         ch = Challenge(
             user_id=db_user.id,
             title=data.get("title", "Без названия"),
             description=data.get("description"),
-            time_str=time_str,
+            time_str=data.get("time_str", "07:00"),
             days_mask="1111110",  # Ежедневно, кроме воскресенья
+            end_date=end_date,
         )
         session.add(ch)
+    
     await state.clear()
-    await message.answer("Челлендж создан ✅", reply_markup=challenges_menu())
+    end_date_text = f" до {end_date.strftime('%d.%m.%Y')}" if end_date else ""
+    await message.answer(f"Челлендж создан ✅{end_date_text}", reply_markup=challenges_menu())
 
 
 @router.callback_query(F.data.startswith("ch_open:"))
@@ -103,7 +135,9 @@ async def ch_open(cb: types.CallbackQuery) -> None:
     if not ch:
         await cb.answer("Не найден")
         return
-    text = f"{ch.title}\n{ch.description or ''}\nВремя: {ch.time_str}\nСтатус: {'активен' if ch.is_active else 'выключен'}"
+    
+    end_date_text = f"\nДата окончания: {ch.end_date.strftime('%d.%m.%Y')}" if ch.end_date else "\nБез срока окончания"
+    text = f"{ch.title}\n{ch.description or ''}\nВремя: {ch.time_str}\nСтатус: {'активен' if ch.is_active else 'выключен'}{end_date_text}"
     await cb.message.edit_text(text, reply_markup=challenge_detail_keyboard(ch_id))
     await cb.answer()
 
@@ -150,6 +184,7 @@ async def ch_time_set(message: types.Message, state: FSMContext) -> None:
 
 class ChallengeEditForm(StatesGroup):
     waiting_text = State()
+    waiting_end_date = State()
 
 
 @router.callback_query(F.data.startswith("ch_edit:"))
@@ -172,6 +207,44 @@ async def ch_edit_set(message: types.Message, state: FSMContext) -> None:
             ch.title = txt
     await state.clear()
     await message.answer("Изменено ✅", reply_markup=challenges_menu())
+
+
+@router.callback_query(F.data.startswith("ch_edit_end_date:"))
+async def ch_edit_end_date(cb: types.CallbackQuery, state: FSMContext) -> None:
+    ch_id = int(cb.data.split(":", 1)[1])
+    await state.update_data(ch_id=ch_id)
+    await state.set_state(ChallengeEditForm.waiting_end_date)
+    await cb.message.edit_text("Введите новую дату окончания в формате ДД.ММ.ГГГГ (или '-' чтобы убрать срок):")
+    await cb.answer()
+
+
+@router.message(ChallengeEditForm.waiting_end_date)
+async def ch_edit_end_date_set(message: types.Message, state: FSMContext) -> None:
+    end_date_str = (message.text or "").strip()
+    data = await state.get_data()
+    ch_id = int(data["ch_id"])  # type: ignore[index]
+    
+    # Парсим дату окончания
+    end_date = None
+    if end_date_str != "-":
+        try:
+            from datetime import datetime
+            end_date = datetime.strptime(end_date_str, "%d.%m.%Y").date()
+            if end_date <= date.today():
+                await message.answer("Дата окончания должна быть в будущем. Попробуйте снова:")
+                return
+        except ValueError:
+            await message.answer("Неверный формат даты. Используйте ДД.ММ.ГГГГ или '-' для пропуска:")
+            return
+    
+    async with session_scope() as session:
+        ch = await session.get(Challenge, ch_id)
+        if ch:
+            ch.end_date = end_date
+    
+    await state.clear()
+    end_date_text = f" до {end_date.strftime('%d.%m.%Y')}" if end_date else ""
+    await message.answer(f"Дата окончания изменена ✅{end_date_text}", reply_markup=challenges_menu())
 
 
 @router.callback_query(F.data.startswith("ch_toggle:"))

@@ -1,6 +1,5 @@
 from .user import UserCreate, UserRead, InteractionCreate
 from .goal import GoalCreate, GoalRead, ABAnalysisCreate
-from .habit import HabitCreate, HabitLogCreate
 
 __all__ = [
     "UserCreate",
@@ -9,8 +8,6 @@ __all__ = [
     "GoalCreate",
     "GoalRead",
     "ABAnalysisCreate",
-    "HabitCreate",
-    "HabitLogCreate",
 ]
 
 

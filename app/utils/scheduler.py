@@ -15,8 +15,9 @@ from app.services.nutrition_reminders import (
     send_shopping_day_reminders,
 )
 from app.services.health_reminders import send_health_daily_prompt, sync_google_fit_data
+from app.services.challenge_cleanup import cleanup_expired_challenges
 from sqlalchemy import select
-from app.db.models import User, Habit, HabitLog, Challenge
+from app.db.models import User, Challenge
 
 
 class AppScheduler:
@@ -32,8 +33,7 @@ class AppScheduler:
         self.scheduler.add_job(self._daily_principle_job, CronTrigger(hour=hour, minute=0))
         # Мотивация в 8 утра
         self.scheduler.add_job(self._daily_motivation_job, CronTrigger(hour=8, minute=0))
-        # персональные напоминания по привычкам: проверка каждые 60 секунд
-        self.scheduler.add_job(self._habit_reminders_job, IntervalTrigger(seconds=60))
+
         # Напоминания по готовке и спискам покупок (ежечасная проверка времени пользователей)
         self.scheduler.add_job(self._nutrition_cooking_job, IntervalTrigger(minutes=1))
         self.scheduler.add_job(self._nutrition_shopping_job, IntervalTrigger(minutes=1))
@@ -41,6 +41,13 @@ class AppScheduler:
         self.scheduler.add_job(self._health_daily_prompt_job, IntervalTrigger(minutes=1))
         # Google Fit: автоматическая синхронизация данных
         self.scheduler.add_job(self._google_fit_sync_job, IntervalTrigger(hours=6))  # Каждые 6 часов
+        
+        # Очистка истекших челленджей (ежедневно в 00:01)
+        self.scheduler.add_job(self._challenge_cleanup_job, CronTrigger(hour=0, minute=1))
+        
+        # To-Do: вечерние напоминания о составлении списка на завтра (в 20:00)
+        self.scheduler.add_job(self._todo_evening_reminder_job, CronTrigger(hour=20, minute=0))
+        
         self.scheduler.start()
 
     async def _daily_principle_job(self) -> None:
@@ -51,54 +58,7 @@ class AppScheduler:
         async with self.session_factory() as session:  # type: ignore[misc]
             await send_daily_motivation(self.bot, session)
 
-    async def _habit_reminders_job(self) -> None:
-        """Check per-user habit reminder times and send nudges if within a small window."""
-        from zoneinfo import ZoneInfo
 
-        # Use UTC for base moment and convert per-user timezone for comparisons
-        now_utc = datetime.now(timezone.utc)
-        async with self.session_factory() as session:  # type: ignore[misc]
-            users = (await session.execute(select(User))).scalars().all()
-
-            # Habit reminders per user timezone
-            for u in users:
-                user_tz_name = u.timezone or settings.default_timezone
-                try:
-                    user_now = now_utc.astimezone(ZoneInfo(user_tz_name))
-                except Exception:
-                    user_now = now_utc.astimezone(ZoneInfo(settings.default_timezone))
-                user_hhmm = user_now.strftime("%H:%M")
-
-                prefs = u.notification_preferences or {}
-                habit_times = prefs.get("habit_times", {})
-                for habit_name, time_str in habit_times.items():
-                    if time_str == user_hhmm:
-                        try:
-                            await self.bot.send_message(u.telegram_id, f"Напоминание: {habit_name} ({user_tz_name})")
-                        except Exception:
-                            continue
-
-            # Challenge reminders per owner timezone (daily except masked days)
-            ch_list = (await session.execute(select(Challenge))).scalars().all()
-            for ch in ch_list:
-                if not ch.is_active:
-                    continue
-                owner = (await session.execute(select(User).where(User.id == ch.user_id))).scalar_one_or_none()
-                if not owner:
-                    continue
-                owner_tz = owner.timezone or settings.default_timezone
-                try:
-                    owner_now = now_utc.astimezone(ZoneInfo(owner_tz))
-                except Exception:
-                    owner_now = now_utc.astimezone(ZoneInfo(settings.default_timezone))
-                weekday = owner_now.weekday()  # Mon=0 .. Sun=6
-                if len(ch.days_mask) == 7 and ch.days_mask[weekday] != "1":
-                    continue
-                if ch.time_str == owner_now.strftime("%H:%M"):
-                    try:
-                        await self.bot.send_message(owner.telegram_id, f"🏆 Напоминание по челленджу: {ch.title} ({owner_tz})")
-                    except Exception:
-                        continue
 
     async def _nutrition_cooking_job(self) -> None:
         async with self.session_factory() as session:  # type: ignore[misc]
@@ -115,5 +75,39 @@ class AppScheduler:
     async def _google_fit_sync_job(self) -> None:
         async with self.session_factory() as session:  # type: ignore[misc]
             await sync_google_fit_data(self.bot, session)
+
+    async def _todo_evening_reminder_job(self) -> None:
+        """Вечернее напоминание о составлении To-Do списка на завтра"""
+        async with self.session_factory() as session:  # type: ignore[misc]
+            try:
+                users = await session.execute(select(User))
+                users_list = users.scalars().all()
+                
+                for user in users_list:
+                    try:
+                        # Отправляем напоминание с кнопками для быстрого добавления задач
+                        from app.keyboards.common import todo_daily_reminder_keyboard
+                        
+                        await self.bot.send_message(
+                            user.telegram_id,
+                            "🌙 <b>Вечернее напоминание</b>\n\n"
+                            "Не забудьте составить список дел на завтра! 📝\n\n"
+                            "Это поможет вам лучше планировать день и быть более продуктивным. ✨",
+                            reply_markup=todo_daily_reminder_keyboard(),
+                            parse_mode="HTML"
+                        )
+                    except Exception as e:
+                        print(f"Ошибка при отправке вечернего напоминания пользователю {user.telegram_id}: {e}")
+                        
+            except Exception as e:
+                print(f"Ошибка в _todo_evening_reminder_job: {e}")
+
+    async def _challenge_cleanup_job(self) -> None:
+        """Очистка истекших челленджей"""
+        async with self.session_factory() as session:  # type: ignore[misc]
+            try:
+                await cleanup_expired_challenges(session, self.bot)
+            except Exception as e:
+                print(f"Ошибка в _challenge_cleanup_job: {e}")
 
 

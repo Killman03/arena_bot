@@ -9,11 +9,100 @@ from sqlalchemy import select, desc
 from sqlalchemy.orm import selectinload
 
 from app.db.session import session_scope
-from app.db.models import User, WeeklyRetro, Goal, Habit, HabitLog, FinanceTransaction, Challenge, ChallengeLog
+from app.db.models import User, WeeklyRetro, Goal, FinanceTransaction, Challenge, ChallengeLog
 from app.keyboards.common import analysis_menu, back_main_menu
 from app.services.llm import deepseek_complete
 
 router = Router()
+
+
+def _split_into_messages(text: str, max_len: int = 3000) -> list[str]:
+    """Разбить текст на несколько сообщений для лучшей читаемости"""
+    if not text:
+        return []
+    
+    # Если текст короткий, не разбиваем
+    if len(text) <= max_len:
+        return [text]
+    
+    # Если текст очень длинный (>4000), разбиваем на 3 части
+    if len(text) > 4000:
+        part_size = len(text) // 3
+        
+        # Ищем хорошие точки разрыва
+        split1 = part_size
+        split2 = part_size * 2
+        
+        # Ищем ближайшие переносы строк или пробелы
+        for i in range(part_size - 100, part_size + 100):
+            if i < 0 or i >= len(text):
+                continue
+            if text[i] == '\n' or text[i] == ' ':
+                split1 = i + 1
+                break
+        
+        for i in range(part_size * 2 - 100, part_size * 2 + 100):
+            if i < 0 or i >= len(text):
+                continue
+            if text[i] == '\n' or text[i] == ' ':
+                split2 = i + 1
+                break
+        
+        part1 = text[:split1].strip()
+        part2 = text[split1:split2].strip()
+        part3 = text[split2:].strip()
+        
+        if part1 and part2 and part3:
+            return [part1, part2, part3]
+        elif part1 and part2:
+            return [part1, part2]
+        else:
+            return [text]
+    
+    # Стандартное разбиение на 2 части
+    paragraphs = text.split("\n\n")
+    total_len = len(text)
+    target = total_len // 2
+    part1 = []
+    len1 = 0
+    
+    for p in paragraphs:
+        block = p + "\n\n"
+        if len1 + len(block) <= max_len and (len1 + len(block) <= target or len1 == 0):
+            part1.append(block)
+            len1 += len(block)
+        else:
+            break
+    
+    p1 = "".join(part1).rstrip()
+    rest = text[len(p1):].lstrip()
+    
+    if not p1:
+        p1 = text[:max_len]
+        rest = text[max_len:]
+    
+    if len(rest) <= max_len:
+        return [p1, rest] if rest else [p1]
+    
+    # Если вторая часть слишком длинная, разбиваем её тоже
+    if len(rest) > max_len:
+        mid_point = len(rest) // 2
+        for i in range(mid_point - 100, mid_point + 100):
+            if i < 0 or i >= len(rest):
+                continue
+            if rest[i] == '\n' or rest[i] == ' ':
+                mid_point = i + 1
+                break
+        
+        part2 = rest[:mid_point].strip()
+        part3 = rest[mid_point:].strip()
+        
+        if part2 and part3:
+            return [p1, part2, part3]
+        else:
+            return [p1, rest[:max_len - 1] + "…"]
+    
+    return [p1, rest]
 
 
 class AnalysisStates(StatesGroup):
@@ -122,7 +211,7 @@ async def process_failure_reason_handler(message: types.Message, state: FSMConte
         
         # Сгенерировать анализ с помощью ИИ
         try:
-            await message.answer("⏳ Генерирую рекомендации ИИ...")
+            await message.answer("⏳ **Генерирую рекомендации ИИ...**", parse_mode="Markdown")
         except Exception:
             pass
         ai_analysis = await generate_ai_analysis(data, recent_data)
@@ -141,10 +230,20 @@ async def process_failure_reason_handler(message: types.Message, state: FSMConte
         f"✅ **Что получилось:** {data.get('success')}\n"
         f"💡 **Почему получилось:** {data.get('success_reason')}\n"
         f"❌ **Что не получилось:** {data.get('failure')}\n"
-        f"🤔 **Почему не получилось:** {data.get('failure_reason')}\n\n"
-        f"🤖 **Рекомендации ИИ:**\n{ai_analysis}",
-        reply_markup=back_main_menu()
+        f"🤔 **Почему не получилось:** {data.get('failure_reason')}",
+        reply_markup=back_main_menu(),
+        parse_mode="Markdown"
     )
+    
+    # Отправить рекомендации ИИ отдельными сообщениями
+    if ai_analysis:
+        await message.answer("🤖 **Рекомендации ИИ:**", parse_mode="Markdown")
+        parts = _split_into_messages(ai_analysis)
+        for i, part in enumerate(parts, 1):
+            if i == 1:
+                await message.answer(part, parse_mode="Markdown")
+            else:
+                await message.answer(f"**Продолжение рекомендаций:**\n{part}", parse_mode="Markdown")
 
 
 @router.callback_query(F.data == "analysis_history")
@@ -199,7 +298,6 @@ async def get_recent_user_data(session, user_id: int) -> dict[str, Any]:
     """Получить последние 10 записей пользователя для анализа."""
     recent_data = {
         "goals": [],
-        "habits": [],
         "finances": [],
         "challenges": []
     }
@@ -212,16 +310,6 @@ async def get_recent_user_data(session, user_id: int) -> dict[str, Any]:
         .limit(10)
     )).scalars().all()
     recent_data["goals"] = [{"title": g.title, "description": g.description, "status": g.status.value} for g in goals]
-    
-    # Последние логи привычек
-    habit_logs = (await session.execute(
-        select(HabitLog)
-        .join(Habit, HabitLog.habit_id == Habit.id)
-        .where(Habit.user_id == user_id)
-        .order_by(desc(HabitLog.created_at))
-        .limit(10)
-    )).scalars().all()
-    recent_data["habits"] = [{"completed": h.completed, "note": h.note} for h in habit_logs]
     
     # Последние финансовые транзакции
     finances = (await session.execute(
@@ -259,13 +347,11 @@ async def generate_ai_analysis(analysis_data: dict, recent_data: dict) -> str:
 
 Последние данные пользователя:
 - Цели: {len(recent_data['goals'])} записей
-- Привычки: {len(recent_data['habits'])} записей
 - Финансы: {len(recent_data['finances'])} записей
 - Челленджи: {len(recent_data['challenges'])} записей
 
 Детали последних записей:
 Цели: {recent_data['goals']}
-Привычки: {recent_data['habits']}
 Финансы: {recent_data['finances']}
 Челленджи: {recent_data['challenges']}
 """
@@ -284,7 +370,7 @@ async def generate_ai_analysis(analysis_data: dict, recent_data: dict) -> str:
         ai_response = await deepseek_complete(
             prompt=f"Проанализируй эти данные и дай рекомендации:\n\n{context}",
             system=system_prompt,
-            max_tokens=800
+            max_tokens=5000
         )
         return ai_response
     except Exception as e:

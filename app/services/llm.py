@@ -19,7 +19,7 @@ async def deepseek_complete(prompt: str, system: Optional[str] = None, max_token
         "max_tokens": max_tokens,
         "temperature": 0.7,
     }
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=120) as client:  # Увеличиваем таймаут до 2 минут
         r = await client.post("https://api.deepseek.com/chat/completions", headers=headers, json=payload)
         r.raise_for_status()
         data = r.json()

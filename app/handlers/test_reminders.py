@@ -23,7 +23,7 @@ async def test_reminders(message: types.Message) -> None:
     if not user:
         return
 
-    sent = {"principle": False, "motivation": False, "habits": 0, "challenges": 0}
+    sent = {"principle": False, "motivation": False, "challenges": 0}
 
     # Daily principle
     principle = random.choice(LAWS_OF_ARENA)
@@ -48,16 +48,6 @@ async def test_reminders(message: types.Message) -> None:
             except Exception:
                 pass
 
-        # Habit reminders (simulate all configured)
-        prefs = db_user.notification_preferences or {}
-        habit_times = prefs.get("habit_times", {})
-        for habit_name in habit_times.keys():
-            try:
-                await message.answer(f"Напоминание по привычке (тест): {habit_name}")
-                sent["habits"] += 1
-            except Exception:
-                continue
-
         # Challenge reminders (simulate for today if allowed by days_mask and active)
         weekday = datetime.now().weekday()  # Mon=0 .. Sun=6
         ch_list = (
@@ -78,7 +68,6 @@ async def test_reminders(message: types.Message) -> None:
         "Итог теста напоминаний:\n"
         f"- принцип: {'ok' if sent['principle'] else 'нет'}\n"
         f"- мотивация: {'ok' if sent['motivation'] else 'нет'}\n"
-        f"- привычки: {sent['habits']}\n"
         f"- челленджи: {sent['challenges']}",
         parse_mode=None,
     )
