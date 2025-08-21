@@ -24,7 +24,10 @@ def main_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="📚 Книги", callback_data="menu_books"),
                 InlineKeyboardButton(text="⚙️ Настройки", callback_data="menu_settings")
             ],
-            [InlineKeyboardButton(text="❓ Помощь", callback_data="help")],
+            [
+                InlineKeyboardButton(text="❓ Помощь", callback_data="help"),
+                InlineKeyboardButton(text="📚 Руководство", callback_data="guide")
+            ],
         ]
     )
 
@@ -44,6 +47,9 @@ def goals_menu() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(text="📖 Подсказка SMART", callback_data="goals_smart_hint"),
                 InlineKeyboardButton(text="⏰ Напоминания", callback_data="goals_reminders"),
+                InlineKeyboardButton(text="❓ Помощь", callback_data="goals_help")
+            ],
+            [
                 InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")
             ],
         ]
@@ -56,6 +62,9 @@ def challenges_menu() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(text="📃 Список", callback_data="ch_list"),
                 InlineKeyboardButton(text="➕ Добавить", callback_data="ch_add"),
+                InlineKeyboardButton(text="❓ Помощь", callback_data="challenges_help")
+            ],
+            [
                 InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")
             ],
         ]
@@ -105,6 +114,9 @@ def settings_menu(current_tz: str | None) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="🇷🇺 Москва", callback_data="tz_moscow"),
                 InlineKeyboardButton(text="🇰🇬 Бишкек", callback_data="tz_bishkek")
             ],
+            [
+                InlineKeyboardButton(text="❓ Помощь", callback_data="settings_help")
+            ],
             [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")],
         ]
     )
@@ -133,7 +145,8 @@ def finance_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="🎯 Финансовые цели", callback_data="finance_goals")
             ],
             [
-                InlineKeyboardButton(text="📊 Группировка по категориям", callback_data="finance_categories_groups")
+                InlineKeyboardButton(text="📊 Группировка по категориям", callback_data="finance_categories_groups"),
+                InlineKeyboardButton(text="❓ Помощь", callback_data="finance_help")
             ],
             [
                 InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")
@@ -252,6 +265,9 @@ def motivation_menu() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(text="💎 Ценности", callback_data="mot_values"),
                 InlineKeyboardButton(text="✏️ Изменить", callback_data="mot_edit"),
+                InlineKeyboardButton(text="❓ Помощь", callback_data="motivation_help")
+            ],
+            [
                 InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")
             ],
         ]
@@ -280,6 +296,9 @@ def analysis_menu() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(text="📝 Начать анализ недели", callback_data="analysis_start"),
                 InlineKeyboardButton(text="📊 История анализов", callback_data="analysis_history"),
+                InlineKeyboardButton(text="❓ Помощь", callback_data="analysis_help")
+            ],
+            [
                 InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")
             ],
         ]
@@ -299,6 +318,9 @@ def nutrition_menu() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(text="📋 История готовки", callback_data="nutrition_history"),
+                InlineKeyboardButton(text="❓ Помощь", callback_data="nutrition_help")
+            ],
+            [
                 InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")
             ],
         ]
@@ -330,6 +352,9 @@ def health_menu() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(text="🔔 Напоминания", callback_data="health_reminders"),
                 InlineKeyboardButton(text="🔗 Интеграции", callback_data="health_integrations"),
+                InlineKeyboardButton(text="❓ Помощь", callback_data="health_help")
+            ],
+            [
                 InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")
             ],
         ]
@@ -369,6 +394,9 @@ def todo_menu() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(text="🗑️ Удалить задачу", callback_data="todo_delete"),
                 InlineKeyboardButton(text="✅ Отметить выполненной", callback_data="todo_complete")
+            ],
+            [
+                InlineKeyboardButton(text="❓ Помощь", callback_data="todo_help")
             ],
             [
                 InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")
@@ -491,6 +519,9 @@ def books_menu() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(text="🔍 Поиск по названию", callback_data="books_search"),
                 InlineKeyboardButton(text="📊 Статистика чтения", callback_data="books_stats")
+            ],
+            [
+                InlineKeyboardButton(text="❓ Помощь", callback_data="books_help")
             ],
             [
                 InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")
