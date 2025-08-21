@@ -83,27 +83,177 @@ async def health_help_command(message: types.Message) -> None:
         "• 🎯 Цели по здоровью - установка целей (8000 шагов/день)\n"
         "• 📊 Аналитика здоровья - ИИ анализ трендов\n"
         "• ⏰ Напоминания - настройка времени записи\n"
-        "• 🔗 Интеграции - подключение Google Fit/Drive\n\n"
-        "**Интеграции с данными:**\n"
-        "• 🔗 Google Fit - прямая интеграция\n"
-        "• 📁 Google Drive - через Health Sync (рекомендуется)\n\n"
+        "• 📁 Импорт данных - загрузка ZIP файлов с данными\n\n"
+        "**Импорт данных:**\n"
+        "• 📱 Экспорт из приложений здоровья (Samsung Health, Google Fit)\n"
+        "• 📦 ZIP файлы с .db данными\n"
+        "• 🔍 Автоматическое распознавание и импорт\n\n"
         "**Команды:**\n"
-        "• `/google_fit_auth КОД` - подключение Google Fit\n"
-        "• `/google_drive_auth КОД` - подключение Google Drive\n\n"
-        "📖 Подробные инструкции доступны в разделе '🔗 Интеграции'"
+        "• `/import_health` - начать импорт данных\n"
+        "• `/health_import_help` - справка по импорту\n"
+        "• `/track` - ручной ввод показателей\n"
+        "• `/goal` - управление целями\n\n"
+        "📖 Подробные инструкции доступны в разделе '📁 Интеграции'\n\n"
+        "**Новинка:** 📁 **Простой импорт ZIP файлов** - быстро и безопасно!"
     )
     
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(text="🩺 Открыть раздел Здоровье", callback_data="menu_health"),
-                InlineKeyboardButton(text="📖 Инструкция Google Drive", callback_data="google_drive_instructions"),
-                InlineKeyboardButton(text="❓ Частые вопросы", callback_data="google_drive_faq")
+                InlineKeyboardButton(text="📁 Импорт данных", callback_data="start_import"),
+                InlineKeyboardButton(text="📚 Справка по импорту", callback_data="health_import_help")
             ],
         ]
     )
     
     await message.answer(text, reply_markup=keyboard, parse_mode="Markdown")
+
+
+@router.message(F.text.startswith("/health_connect_sync"))
+async def health_connect_sync_command(message: types.Message) -> None:
+    """Команда для синхронизации данных Health Connect."""
+    user = message.from_user
+    if not user:
+        return
+    
+    await message.answer("🔄 Синхронизирую данные с Health Connect...")
+    
+    try:
+        from app.services.health_connect import HealthConnectService
+        
+        async with session_scope() as session:
+            db_user = (await session.execute(select(User).where(User.telegram_id == user.id))).scalar_one()
+            
+            # Проверяем, есть ли подключенная интеграция
+            google_token = (
+                await session.execute(
+                    select(GoogleFitToken).where(
+                        GoogleFitToken.user_id == db_user.id,
+                        GoogleFitToken.integration_type == "health_connect"
+                    )
+                )
+            ).scalar_one_or_none()
+            
+            if not google_token:
+                await message.answer(
+                    "❌ Health Connect не подключен!\n\n"
+                    "Сначала подключите Health Connect командой:\n"
+                    "`/health_connect_auth КОД`\n\n"
+                    "Или через меню: Здоровье → 🔗 Интеграции → 📱 Health Connect"
+                )
+                return
+            
+            # Конвертируем токен в словарь
+            credentials_dict = {
+                'token': google_token.access_token,
+                'refresh_token': google_token.refresh_token,
+                'token_uri': google_token.token_uri,
+                'client_id': google_token.client_id,
+                'client_secret': google_token.client_secret,
+                'scopes': google_token.scopes.split(',')
+            }
+            
+            # Синхронизируем данные
+            health_service = HealthConnectService()
+            result = await health_service.sync_health_data(session, db_user.id, credentials_dict)
+            
+            if 'error' in result:
+                await message.answer(f"❌ Ошибка синхронизации: {result['error']}")
+            else:
+                text = "✅ Данные синхронизированы с Health Connect!\n\n"
+                text += f"📱 Источник: Health Connect\n\n"
+                
+                summary = result.get('data_summary', {})
+                if summary.get('steps'):
+                    text += f"🚶 Шаги: {summary['steps']}\n"
+                if summary.get('calories'):
+                    text += f"🔥 Калории: {summary['calories']}\n"
+                if summary.get('sleep_minutes'):
+                    text += f"😴 Сон: {summary['sleep_minutes']} мин\n"
+                if summary.get('heart_rate'):
+                    text += f"❤️ Пульс: {summary['heart_rate']} уд/мин\n"
+                if summary.get('weight_kg'):
+                    text += f"⚖️ Вес: {summary['weight_kg']} кг\n"
+                if summary.get('systolic') and summary.get('diastolic'):
+                    text += f"🩸 Давление: {summary['systolic']}/{summary['diastolic']}\n"
+                
+                await message.answer(text)
+                
+    except Exception as e:
+        await message.answer(f"❌ Ошибка синхронизации: {str(e)}")
+
+
+@router.message(F.text.startswith("/health_connect_auth"))
+async def health_connect_auth_command(message: types.Message) -> None:
+    """Обработчик команды для авторизации Health Connect."""
+    user = message.from_user
+    if not user:
+        return
+    
+    # Извлекаем код из команды
+    parts = message.text.split()
+    if len(parts) < 2:
+        await message.answer(
+            "Использование: /health_connect_auth КОД\n\n"
+            "Получите код, нажав 'Health Connect' в разделе Здоровье → Интеграции\n\n"
+            "📱 **Health Connect** - новая платформа Google для Android 14+\n"
+            "• Объединяет данные из разных приложений\n"
+            "• Более стабильно чем Google Fit\n"
+            "• Лучшая безопасность и приватность"
+        )
+        return
+    
+    auth_code = parts[1]
+    
+    try:
+        from app.services.health_connect import HealthConnectService
+        
+        async with session_scope() as session:
+            db_user = (await session.execute(select(User).where(User.telegram_id == user.id))).scalar_one()
+            
+            # Обмениваем код на токены
+            health_service = HealthConnectService()
+            tokens = health_service.exchange_code_for_tokens(auth_code)
+            
+            # Сохраняем токены в базу
+            google_token = GoogleFitToken(
+                user_id=db_user.id,
+                integration_type="health_connect",
+                access_token=tokens['token'],
+                refresh_token=tokens.get('refresh_token'),
+                token_uri=tokens['token_uri'],
+                client_id=tokens['client_id'],
+                client_secret=tokens['client_secret'],
+                scopes=','.join(tokens['scopes'])
+            )
+            session.add(google_token)
+            await session.commit()
+            
+            await message.answer(
+                "✅ Health Connect успешно подключен!\n\n"
+                "📱 **Health Connect** - новая платформа Google\n\n"
+                "Теперь вы можете:\n"
+                "• Синхронизировать данные из Health Connect\n"
+                "• Получать данные из разных приложений (Fitbit, Samsung Health и др.)\n"
+                "• Автоматические обновления каждые 6 часов\n"
+                "• Просматривать данные в разделе Здоровье\n\n"
+                "🔄 Попробуйте синхронизировать данные сейчас в разделе '🔗 Интеграции'!"
+            )
+            
+    except Exception as e:
+        error_message = str(e)
+        if "invalid_grant" in error_message.lower():
+            await message.answer(
+                "❌ Ошибка авторизации: неверный код\n\n"
+                "Возможные причины:\n"
+                "• Код уже использован\n"
+                "• Код устарел (действует 10 минут)\n"
+                "• Неправильно скопирован код\n\n"
+                "🔄 Получите новый код авторизации в разделе '🔗 Интеграции'"
+            )
+        else:
+            await message.answer(f"❌ Ошибка подключения Health Connect: {str(e)}")
 
 
 @router.message(F.text.startswith("/google_drive_auth"))
@@ -415,72 +565,41 @@ async def health_reminders_set(message: types.Message, state: FSMContext) -> Non
 
 @router.callback_query(F.data == "health_integrations")
 async def health_integrations(cb: types.CallbackQuery) -> None:
-    from app.services.google_fit import GoogleFitService
-    from app.services.google_drive import GoogleDriveService
+    """Меню интеграций здоровья - теперь только простой импорт ZIP файлов."""
+    text = (
+        "📁 **Импорт данных здоровья**\n\n"
+        "**Простой способ импорта данных:**\n"
+        "• 📱 Экспортируйте данные из приложения здоровья\n"
+        "• 📦 Получите ZIP файл с данными\n"
+        "• 📤 Загрузите ZIP в бота\n"
+        "• ✅ Данные автоматически импортируются\n\n"
+        "**Поддерживаемые приложения:**\n"
+        "• Samsung Health\n"
+        "• Google Fit\n"
+        "• Apple Health\n"
+        "• Fitbit\n"
+        "• И другие\n\n"
+        "**Преимущества:**\n"
+        "• 🚀 Быстро и просто\n"
+        "• 🔒 Безопасно (файлы удаляются)\n"
+        "• 📊 Автоматическое распознавание данных\n"
+        "• 💾 Полный контроль над данными\n\n"
+        "Выберите действие:"
+    )
     
-    user = cb.from_user
-    if not user:
-        await cb.answer()
-        return
-    
-    async with session_scope() as session:
-        db_user = (await session.execute(select(User).where(User.telegram_id == user.id))).scalar_one()
-        
-        # Проверяем, есть ли уже подключенные интеграции
-        google_token = (
-            await session.execute(
-                select(GoogleFitToken).where(GoogleFitToken.user_id == db_user.id)
-            )
-        ).scalar_one_or_none()
-        
-        if google_token:
-            # Уже подключен - показываем опции в зависимости от типа
-            if google_token.integration_type == "google_drive":
-                keyboard = InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [
-                            InlineKeyboardButton(text="🔄 Синхронизировать с Google Drive", callback_data="google_drive_sync"),
-                            InlineKeyboardButton(text="❌ Отключить Google Drive", callback_data="google_drive_disconnect"),
-                            InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_health")
-                        ],
-                    ]
-                )
-                text = "Google Drive подключен! ✅\n\nДанные читаются из файлов Health Sync на Google Drive.\n\nВыберите действие:"
-            else:
-                keyboard = InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [
-                            InlineKeyboardButton(text="🔄 Синхронизировать с Google Fit", callback_data="google_fit_sync"),
-                            InlineKeyboardButton(text="❌ Отключить Google Fit", callback_data="google_fit_disconnect"),
-                            InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_health")
-                        ],
-                    ]
-                )
-                text = "Google Fit подключен! ✅\n\nВыберите действие:"
-        else:
-            # Не подключен - предлагаем выбрать тип интеграции
-            keyboard = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(text="🔗 Google Fit (прямая интеграция)", callback_data="setup_google_fit"),
-                        InlineKeyboardButton(text="📁 Google Drive (через Health Sync)", callback_data="setup_google_drive"),
-                        InlineKeyboardButton(text="📖 Подробная инструкция Google Drive", callback_data="google_drive_instructions")
-                    ],
-                    [
-                        InlineKeyboardButton(text="❓ Частые вопросы", callback_data="google_drive_faq"),
-                        InlineKeyboardButton(text="ℹ️ Общая справка", callback_data="google_integration_help"),
-                        InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_health")
-                    ],
-                ]
-            )
-            text = (
-                "Интеграции:\n\n"
-                "🔗 **Google Fit**: прямая интеграция с API\n"
-                "📁 **Google Drive**: чтение данных из файлов Health Sync\n"
-                "📱 **Apple Health**: планируется\n\n"
-                "**Рекомендуем Google Drive** - более стабильно и проще в настройке!\n\n"
-                "Выберите тип интеграции или изучите инструкции:"
-            )
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📁 Импортировать ZIP", callback_data="start_import"),
+                InlineKeyboardButton(text="📚 Справка по импорту", callback_data="health_import_help")
+            ],
+            [
+                InlineKeyboardButton(text="📊 Просмотр данных", callback_data="health_analytics"),
+                InlineKeyboardButton(text="🎯 Установить цели", callback_data="health_goals")
+            ],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_health")],
+        ]
+    )
     
     await cb.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
     await cb.answer()
@@ -490,6 +609,13 @@ async def health_integrations(cb: types.CallbackQuery) -> None:
 async def google_integration_help(cb: types.CallbackQuery) -> None:
     text = (
         "📱 **Как подключить интеграции:**\n\n"
+        "📱 **Health Connect (Android 14+):**\n"
+        "1. Нажмите '📱 Health Connect (Android 14+)'\n"
+        "2. Войдите в аккаунт Google\n"
+        "3. Разрешите доступ к данным здоровья\n"
+        "4. Скопируйте код авторизации\n"
+        "5. Отправьте код боту командой:\n"
+        "   `/health_connect_auth КОД`\n\n"
         "🔗 **Google Fit (прямая интеграция):**\n"
         "1. Нажмите 'Google Fit (прямая интеграция)'\n"
         "2. Войдите в аккаунт Google\n"
@@ -506,9 +632,24 @@ async def google_integration_help(cb: types.CallbackQuery) -> None:
         "6. Скопируйте код авторизации\n"
         "7. Отправьте код боту командой:\n"
         "   `/google_drive_auth КОД`\n\n"
+        "**Рекомендации:**\n"
+        "• **Health Connect** - для Android 14+ (лучший выбор)\n"
+        "• **Google Drive** - для всех устройств (стабильно)\n"
+        "• **Google Fit** - для прямой интеграции\n\n"
         "После подключения данные будут синхронизироваться автоматически!"
     )
-    await cb.message.edit_text(text, reply_markup=back_main_menu(), parse_mode="Markdown")
+    
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🔧 Настройка Google Cloud", callback_data="google_cloud_setup"),
+                InlineKeyboardButton(text="❓ Частые вопросы", callback_data="google_integration_faq")
+            ],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="health_integrations")],
+        ]
+    )
+    
+    await cb.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
     await cb.answer()
 
 
@@ -543,6 +684,84 @@ async def google_drive_instructions(cb: types.CallbackQuery) -> None:
             [
                 InlineKeyboardButton(text="📁 Подключить Google Drive", callback_data="setup_google_drive"),
                 InlineKeyboardButton(text="❓ Частые вопросы", callback_data="google_drive_faq"),
+                InlineKeyboardButton(text="⬅️ Назад", callback_data="health_integrations")
+            ],
+        ]
+    )
+    
+    await cb.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
+    await cb.answer()
+
+
+@router.callback_query(F.data == "health_connect_instructions")
+async def health_connect_instructions(cb: types.CallbackQuery) -> None:
+    text = (
+        "📱 **Подробная инструкция по подключению Health Connect:**\n\n"
+        "**Что такое Health Connect?**\n"
+        "Health Connect - это новая платформа Google для Android 14+, которая объединяет данные здоровья из разных приложений в одном месте.\n\n"
+        "**Требования:**\n"
+        "• Android 14 или новее\n"
+        "• Google Play Services\n"
+        "• Приложения, поддерживающие Health Connect\n\n"
+        "**Шаг 1: Проверка совместимости**\n"
+        "• Откройте Настройки → Здоровье\n"
+        "• Если видите Health Connect - ваш телефон поддерживает\n"
+        "• Если нет - используйте Google Fit или Google Drive\n\n"
+        "**Шаг 2: Настройка Health Connect**\n"
+        "• Откройте Health Connect в настройках\n"
+        "• Разрешите доступ к данным здоровья\n"
+        "• Подключите нужные приложения (Fitbit, Samsung Health и др.)\n\n"
+        "**Шаг 3: Подключение в боте**\n"
+        "• Вернитесь в бота\n"
+        "• Выберите '📱 Health Connect (Android 14+)'\n"
+        "• Следуйте инструкциям авторизации\n"
+        "• Используйте команду `/health_connect_auth КОД`\n\n"
+        "**Поддерживаемые приложения:**\n"
+        "• Fitbit, Samsung Health, MyFitnessPal\n"
+        "• Strava, Nike Run Club, Garmin Connect\n"
+        "• Google Fit, Apple Health (через сторонние приложения)\n\n"
+        "**Важно:** Убедитесь, что Health Connect настроен и содержит данные перед подключением бота!"
+    )
+    
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📱 Подключить Health Connect", callback_data="setup_health_connect"),
+                InlineKeyboardButton(text="❓ Частые вопросы", callback_data="health_connect_faq"),
+                InlineKeyboardButton(text="⬅️ Назад", callback_data="health_integrations")
+            ],
+        ]
+    )
+    
+    await cb.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
+    await cb.answer()
+
+
+@router.callback_query(F.data == "health_connect_faq")
+async def health_connect_faq(cb: types.CallbackQuery) -> None:
+    text = (
+        "❓ **Частые вопросы по Health Connect:**\n\n"
+        "**Q: Почему не вижу Health Connect в настройках?**\n"
+        "A: Health Connect доступен только на Android 14+. На более старых версиях используйте Google Fit или Google Drive.\n\n"
+        "**Q: Какие приложения поддерживают Health Connect?**\n"
+        "A: Fitbit, Samsung Health, MyFitnessPal, Strava, Nike Run Club, Garmin Connect и многие другие.\n\n"
+        "**Q: Как часто синхронизируются данные?**\n"
+        "A: Автоматически каждые 6 часов. Также можно синхронизировать вручную.\n\n"
+        "**Q: Что делать, если авторизация не работает?**\n"
+        "A: Проверьте, что в Google Cloud Console включен Google Fit API и настроены правильные OAuth credentials.\n\n"
+        "**Q: Можно ли использовать несколько аккаунтов?**\n"
+        "A: Каждый пользователь бота может подключить только один Health Connect аккаунт.\n\n"
+        "**Q: Безопасны ли мои данные?**\n"
+        "A: Бот получает доступ только для чтения данных. Данные не передаются третьим лицам.\n\n"
+        "**Q: В чем отличие от Google Fit?**\n"
+        "A: Health Connect - новая платформа с лучшей безопасностью, стабильностью и поддержкой большего количества приложений."
+    )
+    
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📱 Подключить Health Connect", callback_data="setup_health_connect"),
+                InlineKeyboardButton(text="📖 Подробная инструкция", callback_data="health_connect_instructions"),
                 InlineKeyboardButton(text="⬅️ Назад", callback_data="health_integrations")
             ],
         ]
@@ -616,6 +835,62 @@ async def setup_google_fit(cb: types.CallbackQuery) -> None:
             "5. Отправьте код боту командой:\n"
             "   `/google_fit_auth КОД`\n\n"
             "После подключения данные будут синхронизироваться автоматически!"
+        )
+    
+    await cb.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
+    await cb.answer()
+
+
+@router.callback_query(F.data == "setup_health_connect")
+async def setup_health_connect(cb: types.CallbackQuery) -> None:
+    from app.services.health_connect import HealthConnectService
+    
+    user = cb.from_user
+    if not user:
+        await cb.answer()
+        return
+    
+    async with session_scope() as session:
+        db_user = (await session.execute(select(User).where(User.telegram_id == user.id))).scalar_one()
+        
+        health_service = HealthConnectService()
+        auth_url = health_service.get_authorization_url(db_user.id)
+        
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="📱 Подключить Health Connect", url=auth_url),
+                    InlineKeyboardButton(text="📖 Подробная инструкция", callback_data="health_connect_instructions")
+                ],
+                [
+                    InlineKeyboardButton(text="❓ Частые вопросы", callback_data="health_connect_faq"),
+                    InlineKeyboardButton(text="⬅️ Назад", callback_data="health_integrations")
+                ],
+            ]
+        )
+        text = (
+            "📱 **Подключение Health Connect:**\n\n"
+            "**Health Connect** - новая платформа Google для Android 14+\n\n"
+            "**Преимущества:**\n"
+            "• 🔗 Объединяет данные из разных приложений\n"
+            "• 📱 Работает на Android 14+\n"
+            "• 🚀 Более стабильно чем Google Fit\n"
+            "• 🔒 Лучшая безопасность и приватность\n\n"
+            "**Поддерживаемые приложения:**\n"
+            "• Fitbit, Samsung Health, MyFitnessPal\n"
+            "• Strava, Nike Run Club, Garmin Connect\n"
+            "• И многие другие\n\n"
+            "**Шаги подключения:**\n"
+            "1. Нажмите '📱 Подключить Health Connect'\n"
+            "2. Войдите в аккаунт Google\n"
+            "3. Разрешите доступ к данным здоровья\n"
+            "4. Скопируйте код авторизации\n"
+            "5. Отправьте код боту командой:\n"
+            "   `/health_connect_auth КОД`\n\n"
+            "**После подключения:**\n"
+            "• Данные будут синхронизироваться автоматически\n"
+            "• Можно синхронизировать вручную\n"
+            "• Доступ к данным только для чтения"
         )
     
     await cb.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
@@ -727,6 +1002,68 @@ async def google_fit_sync(cb: types.CallbackQuery) -> None:
             await cb.message.edit_text(text, reply_markup=back_main_menu())
 
 
+@router.callback_query(F.data == "health_connect_sync")
+async def health_connect_sync(cb: types.CallbackQuery) -> None:
+    from app.services.health_connect import HealthConnectService
+    
+    user = cb.from_user
+    if not user:
+        await cb.answer()
+        return
+    
+    await cb.answer("Синхронизирую данные с Health Connect...", show_alert=False)
+    
+    async with session_scope() as session:
+        db_user = (await session.execute(select(User).where(User.telegram_id == user.id))).scalar_one()
+        google_token = (
+            await session.execute(
+                select(GoogleFitToken).where(
+                    GoogleFitToken.user_id == db_user.id,
+                    GoogleFitToken.integration_type == "health_connect"
+                )
+            )
+        ).scalar_one_or_none()
+        
+        if not google_token:
+            await cb.message.edit_text("Health Connect не подключен!", reply_markup=back_main_menu())
+            return
+        
+        # Конвертируем токен в словарь
+        credentials_dict = {
+            'token': google_token.access_token,
+            'refresh_token': google_token.refresh_token,
+            'token_uri': google_token.token_uri,
+            'client_id': google_token.client_id,
+            'client_secret': google_token.client_secret,
+            'scopes': google_token.scopes.split(',')
+        }
+        
+        health_service = HealthConnectService()
+        result = await health_service.sync_health_data(session, db_user.id, credentials_dict)
+        
+        if 'error' in result:
+            await cb.message.edit_text(f"Ошибка синхронизации: {result['error']}", reply_markup=back_main_menu())
+        else:
+            text = "✅ Данные синхронизированы с Health Connect!\n\n"
+            text += f"📱 Источник: Health Connect\n\n"
+            
+            summary = result.get('data_summary', {})
+            if summary.get('steps'):
+                text += f"🚶 Шаги: {summary['steps']}\n"
+            if summary.get('calories'):
+                text += f"🔥 Калории: {summary['calories']}\n"
+            if summary.get('sleep_minutes'):
+                text += f"😴 Сон: {summary['sleep_minutes']} мин\n"
+            if summary.get('heart_rate'):
+                text += f"❤️ Пульс: {summary['heart_rate']} уд/мин\n"
+            if summary.get('weight_kg'):
+                text += f"⚖️ Вес: {summary['weight_kg']} кг\n"
+            if summary.get('systolic') and summary.get('diastolic'):
+                text += f"🩸 Давление: {summary['systolic']}/{summary['diastolic']}\n"
+            
+            await cb.message.edit_text(text, reply_markup=back_main_menu())
+
+
 @router.callback_query(F.data == "google_drive_sync")
 async def google_drive_sync(cb: types.CallbackQuery) -> None:
     from app.services.google_drive import GoogleDriveService
@@ -817,6 +1154,34 @@ async def google_fit_disconnect(cb: types.CallbackQuery) -> None:
     await health_integrations(cb)
 
 
+@router.callback_query(F.data == "health_connect_disconnect")
+async def health_connect_disconnect(cb: types.CallbackQuery) -> None:
+    user = cb.from_user
+    if not user:
+        await cb.answer()
+        return
+    
+    async with session_scope() as session:
+        db_user = (await session.execute(select(User).where(User.telegram_id == user.id))).scalar_one()
+        google_token = (
+            await session.execute(
+                select(GoogleFitToken).where(
+                    GoogleFitToken.user_id == db_user.id,
+                    GoogleFitToken.integration_type == "health_connect"
+                )
+            )
+        ).scalar_one_or_none()
+        
+        if google_token:
+            await session.delete(google_token)
+            await session.commit()
+            await cb.answer("Health Connect отключен!", show_alert=True)
+        else:
+            await cb.answer("Health Connect не был подключен", show_alert=True)
+    
+    await health_integrations(cb)
+
+
 @router.callback_query(F.data == "google_drive_disconnect")
 async def google_drive_disconnect(cb: types.CallbackQuery) -> None:
     user = cb.from_user
@@ -845,7 +1210,224 @@ async def google_drive_disconnect(cb: types.CallbackQuery) -> None:
     await health_integrations(cb)
 
 
-def _split_into_two_messages(text: str, max_len: int = 3000) -> list[str]:
+@router.callback_query(F.data == "google_cloud_setup")
+async def google_cloud_setup(cb: types.CallbackQuery) -> None:
+    """Инструкция по настройке Google Cloud Console."""
+    text = (
+        "🔧 **Настройка Google Cloud Console для интеграций:**\n\n"
+        "**Шаг 1: Создание проекта**\n"
+        "1. Откройте [Google Cloud Console](https://console.cloud.google.com/)\n"
+        "2. Создайте новый проект или выберите существующий\n"
+        "3. Запомните **Project ID**\n\n"
+        "**Шаг 2: Включение API**\n"
+        "В разделе **'APIs & Services' → 'Library'** включите:\n"
+        "• ✅ **Google Fit API** (для Health Connect и Google Fit)\n"
+        "• ✅ **Google Drive API** (для Google Drive интеграции)\n"
+        "• ✅ **Google+ API** (если требуется)\n\n"
+        "**Шаг 3: Создание OAuth 2.0 credentials**\n"
+        "1. Перейдите в **'APIs & Services' → 'Credentials'**\n"
+        "2. Нажмите **'Create Credentials' → 'OAuth 2.0 Client IDs'**\n"
+        "3. Выберите тип: **'Web application'**\n"
+        "4. Добавьте **Authorized redirect URIs**:\n"
+        "   ```\n"
+        "   http://localhost:8000/auth/google/callback\n"
+        "   https://yourdomain.com/auth/google/callback  # если есть домен\n"
+        "   ```\n"
+        "5. Сохраните **Client ID** и **Client Secret**\n\n"
+        "**Шаг 4: Настройка переменных окружения**\n"
+        "В файле `.env` заполните:\n"
+        "```env\n"
+        "GOOGLE_CLIENT_ID=your_actual_client_id_here\n"
+        "GOOGLE_CLIENT_SECRET=your_actual_client_secret_here\n"
+        "GOOGLE_REDIRECT_URI=http://localhost:8000/auth/google/callback\n"
+        "```\n\n"
+        "**Шаг 5: Перезапуск бота**\n"
+        "После изменения `.env` **обязательно** перезапустите бота!\n\n"
+        "**🔗 Полезные ссылки:**\n"
+        "• [Google Cloud Console](https://console.cloud.google.com/)\n"
+        "• [APIs & Services → Library](https://console.cloud.google.com/apis/library)\n"
+        "• [APIs & Services → Credentials](https://console.cloud.google.com/apis/credentials)\n\n"
+        "**⚠️ Важно:** Не забудьте перезапустить бота после настройки!"
+    )
+    
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🔧 Проверить конфигурацию", callback_data="check_google_config"),
+                InlineKeyboardButton(text="❓ Частые ошибки", callback_data="google_cloud_errors")
+            ],
+            [
+                InlineKeyboardButton(text="📱 Health Connect", callback_data="setup_health_connect"),
+                InlineKeyboardButton(text="🔗 Google Fit", callback_data="setup_google_fit")
+            ],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="google_integration_help")],
+        ]
+    )
+    
+    await cb.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
+    await cb.answer()
+
+
+@router.callback_query(F.data == "google_cloud_errors")
+async def google_cloud_errors(cb: types.CallbackQuery) -> None:
+    """Частые ошибки при настройке Google Cloud Console."""
+    text = (
+        "❌ **Частые ошибки при настройке Google Cloud Console:**\n\n"
+        "**🚨 Ошибка 1: 'Доступ заблокирован'**\n"
+        "**Причина:** Не настроены Google credentials\n"
+        "**Решение:**\n"
+        "1. Проверьте файл `.env`\n"
+        "2. Убедитесь, что GOOGLE_CLIENT_ID и GOOGLE_CLIENT_SECRET заполнены\n"
+        "3. Перезапустите бота\n\n"
+        "**🚨 Ошибка 2: 'Invalid client_id'**\n"
+        "**Причина:** Неправильный Client ID\n"
+        "**Решение:**\n"
+        "1. Скопируйте Client ID из Google Cloud Console полностью\n"
+        "2. Проверьте, что нет лишних пробелов\n"
+        "3. Перезапустите бота\n\n"
+        "**🚨 Ошибка 3: 'Redirect URI mismatch'**\n"
+        "**Причина:** Неверный redirect URI\n"
+        "**Решение:**\n"
+        "1. В Google Cloud Console добавьте: `http://localhost:8000/auth/google/callback`\n"
+        "2. Убедитесь, что URI в `.env` совпадает\n"
+        "3. Перезапустите бота\n\n"
+        "**🚨 Ошибка 4: 'API not enabled'**\n"
+        "**Причина:** API не включены\n"
+        "**Решение:**\n"
+        "1. Включите Google Fit API и Google Drive API\n"
+        "2. Подождите несколько минут после включения\n"
+        "3. Попробуйте снова\n\n"
+        "**🔧 Диагностика:**\n"
+        "• Запустите: `python check_config.py`\n"
+        "• Проверьте логи бота\n"
+        "• Убедитесь, что Google Cloud Console доступен\n\n"
+        "**💡 Профилактика:**\n"
+        "• Всегда перезапускайте бота после изменения `.env`\n"
+        "• Проверяйте правильность копирования credentials\n"
+        "• Используйте актуальные redirect URI"
+    )
+    
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🔧 Настройка Google Cloud", callback_data="google_cloud_setup"),
+                InlineKeyboardButton(text="📋 Проверить конфигурацию", callback_data="check_google_config")
+            ],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="google_cloud_setup")],
+        ]
+    )
+    
+    await cb.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
+    await cb.answer()
+
+
+@router.callback_query(F.data == "check_google_config")
+async def check_google_config(cb: types.CallbackQuery) -> None:
+    """Проверка конфигурации Google credentials."""
+    text = (
+        "🔍 **Проверка конфигурации Google credentials:**\n\n"
+        "**Для проверки конфигурации выполните:**\n\n"
+        "**1. Проверка файла .env**\n"
+        "```bash\n"
+        "python check_config.py\n"
+        "```\n\n"
+        "**2. Проверка переменных окружения**\n"
+        "```bash\n"
+        "python -c \"from app.config import settings; print('Client ID:', settings.google_client_id); print('Client Secret:', 'SET' if settings.google_client_secret else 'NOT SET')\"\n"
+        "```\n\n"
+        "**3. Тест Health Connect сервиса**\n"
+        "```bash\n"
+        "python test_health_connect.py\n"
+        "```\n\n"
+        "**📋 Что должно быть в .env:**\n"
+        "```env\n"
+        "GOOGLE_CLIENT_ID=123456789-abcdefghijklmnop.apps.googleusercontent.com\n"
+        "GOOGLE_CLIENT_SECRET=GOCSPX-abcdefghijklmnopqrstuvwxyz\n"
+        "GOOGLE_REDIRECT_URI=http://localhost:8000/auth/google/callback\n"
+        "```\n\n"
+        "**✅ Признаки правильной настройки:**\n"
+        "• Client ID начинается с цифр и содержит `.apps.googleusercontent.com`\n"
+        "• Client Secret начинается с `GOCSPX-`\n"
+        "• Бот запускается без ошибок\n"
+        "• В меню интеграций видно Health Connect\n\n"
+        "**❌ Признаки неправильной настройки:**\n"
+        "• Client ID = `your_google_client_id`\n"
+        "• Client Secret = `your_google_client_secret`\n"
+        "• Ошибка 'доступ заблокирован' при подключении\n"
+        "• Бот не запускается"
+    )
+    
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🔧 Настройка Google Cloud", callback_data="google_cloud_setup"),
+                InlineKeyboardButton(text="❓ Частые ошибки", callback_data="google_cloud_errors")
+            ],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="google_cloud_setup")],
+        ]
+    )
+    
+    await cb.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
+    await cb.answer()
+
+
+@router.callback_query(F.data == "google_integration_faq")
+async def google_integration_faq(cb: types.CallbackQuery) -> None:
+    """FAQ по интеграциям Google."""
+    text = (
+        "❓ **Частые вопросы по интеграциям Google:**\n\n"
+        "**Q: Почему не работает Health Connect?**\n"
+        "A: Проверьте:\n"
+        "• Android 14+ на телефоне\n"
+        "• Настроен ли Google Cloud Console\n"
+        "• Правильно ли заполнен .env файл\n"
+        "• Перезапущен ли бот после изменений\n\n"
+        "**Q: Что делать при ошибке 'доступ заблокирован'?**\n"
+        "A: Это означает, что не настроены Google credentials:\n"
+        "1. Настройте Google Cloud Console\n"
+        "2. Заполните .env файл\n"
+        "3. Перезапустите бота\n\n"
+        "**Q: Как часто синхронизируются данные?**\n"
+        "A: Автоматически каждые 6 часов. Также можно синхронизировать вручную.\n\n"
+        "**Q: Можно ли использовать несколько аккаунтов?**\n"
+        "A: Каждый пользователь бота может подключить только один аккаунт Google.\n\n"
+        "**Q: Безопасны ли мои данные?**\n"
+        "A: Бот получает доступ только для чтения данных. Данные не передаются третьим лицам.\n\n"
+        "**Q: Что делать, если авторизация не работает?**\n"
+        "A: Проверьте настройки Google Cloud Console и убедитесь, что API включены."
+    )
+    
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🔧 Настройка Google Cloud", callback_data="google_cloud_setup"),
+                InlineKeyboardButton(text="📋 Проверить конфигурацию", callback_data="check_google_config")
+            ],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="google_integration_help")],
+        ]
+    )
+    
+    await cb.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
+    await cb.answer()
+
+
+@router.callback_query(F.data == "start_import")
+async def start_import_from_menu(cb: types.CallbackQuery, state: FSMContext) -> None:
+    """Начинает импорт из главного меню здоровья."""
+    from app.handlers.zip_import import import_health_start
+    await import_health_start(cb.message, state)
+    await cb.answer()
+
+
+@router.callback_query(F.data == "health_import_help")
+async def health_import_help_from_menu(cb: types.CallbackQuery) -> None:
+    """Показывает справку по импорту из главного меню."""
+    from app.handlers.zip_import import health_import_help
+    await health_import_help(cb.message)
+    await cb.answer()
+
+
+def _split_into_two_messages(text: str, max_len: int = 2000) -> list[str]:
     """Разбить текст на несколько сообщений для лучшей читаемости"""
     if not text:
         return []

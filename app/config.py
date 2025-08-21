@@ -10,10 +10,7 @@ class Settings(BaseSettings):
     bot_token: str = Field(alias="BOT_TOKEN")
     database_url: str = Field(alias="DATABASE_URL")
 
-    # Notion API
-    notion_api_key: str
-    notion_db_goals: str
-    notion_db_tasks: str
+    
 
     # Google Fit Integration
     google_client_id: str = ""

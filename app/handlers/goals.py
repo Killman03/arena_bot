@@ -12,7 +12,7 @@ from app.db.models import Goal, GoalScope, GoalStatus, ABAnalysis, User
 from app.db.models.goal import GoalReminder
 from app.db.session import session_scope
 from app.services.llm import deepseek_complete
-from app.services.notion import create_goal_page
+
 
 router = Router()
 
@@ -62,16 +62,12 @@ async def add_goal(message: types.Message) -> None:
             status=GoalStatus.active,
         )
         session.add(goal)
-    # AI: автогенерация SMART-описания и запись в Notion
+            # AI: автогенерация SMART-описания
     status_msg = await message.answer("⏳ Генерирую SMART-описание...")
     smart_prompt = f"Оцени цель пользователя и оформи SMART-описание кратко: '{text}'. Выведи 5 пунктов: S,M,A,R,T."
     try:
         smart = await deepseek_complete(smart_prompt, system="Ты коуч по целям. Кратко и по делу.")
-        _ = await create_goal_page({
-            "Name": {"title": [{"text": {"content": text}}]},
-            "Scope": {"select": {"name": "day"}},
-            "SMART": {"rich_text": [{"text": {"content": smart[:1900]}}]},
-        })
+
         await status_msg.edit_text("Цель добавлена ✅\nSMART:\n" + smart)
     except Exception:
         await status_msg.edit_text("Цель добавлена ✅")
@@ -375,12 +371,7 @@ async def goals_add_reminder_time(message: types.Message, state: FSMContext) -> 
     try:
         smart = await deepseek_complete(smart_prompt, system="Ты коуч по целям. Кратко и по делу.")
         
-        # Записываем в Notion
-        _ = await create_goal_page({
-            "Name": {"title": [{"text": {"content": title}}]},
-            "Scope": {"select": {"name": str(scope)}},
-            "SMART": {"rich_text": [{"text": {"content": smart[:1900]}}]},
-        })
+
         
         await status_msg.edit_text(
             f"🎯 Цель создана успешно! ✅\n\n"

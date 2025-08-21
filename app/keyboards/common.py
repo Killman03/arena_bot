@@ -21,6 +21,7 @@ def main_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="📝 To-Do", callback_data="menu_todo")
             ],
             [
+                InlineKeyboardButton(text="📚 Книги", callback_data="menu_books"),
                 InlineKeyboardButton(text="⚙️ Настройки", callback_data="menu_settings")
             ],
             [InlineKeyboardButton(text="❓ Помощь", callback_data="help")],
@@ -468,6 +469,182 @@ def todo_type_menu() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_todo")
+            ],
+        ]
+    )
+
+
+# ==================== КНИГИ ====================
+
+def books_menu() -> InlineKeyboardMarkup:
+    """Главное меню раздела книг"""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📚 Хочу прочитать", callback_data="books_want_to_read"),
+                InlineKeyboardButton(text="📖 Читаю сейчас", callback_data="books_reading")
+            ],
+            [
+                InlineKeyboardButton(text="✅ Прочитанные", callback_data="books_completed"),
+                InlineKeyboardButton(text="➕ Добавить книгу", callback_data="books_add")
+            ],
+            [
+                InlineKeyboardButton(text="🔍 Поиск по названию", callback_data="books_search"),
+                InlineKeyboardButton(text="📊 Статистика чтения", callback_data="books_stats")
+            ],
+            [
+                InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")
+            ],
+        ]
+    )
+
+
+def book_status_menu() -> InlineKeyboardMarkup:
+    """Меню выбора статуса книги для изменения"""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📚 Хочу прочитать", callback_data="book_status_want_to_read"),
+                InlineKeyboardButton(text="📖 Читаю сейчас", callback_data="book_status_reading")
+            ],
+            [
+                InlineKeyboardButton(text="✅ Прочитана", callback_data="book_status_completed"),
+                InlineKeyboardButton(text="❌ Бросил читать", callback_data="book_status_abandoned")
+            ],
+            [
+                InlineKeyboardButton(text="⬅️ Назад", callback_data="books_menu")
+            ],
+        ]
+    )
+
+
+def book_add_status_menu() -> InlineKeyboardMarkup:
+    """Меню выбора статуса книги при добавлении"""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📚 Хочу прочитать", callback_data="book_add_status_want_to_read"),
+                InlineKeyboardButton(text="📖 Читаю сейчас", callback_data="book_add_status_reading")
+            ],
+            [
+                InlineKeyboardButton(text="✅ Прочитана", callback_data="book_add_status_completed"),
+                InlineKeyboardButton(text="❌ Бросил читать", callback_data="book_add_status_abandoned")
+            ],
+            [
+                InlineKeyboardButton(text="⬅️ Назад", callback_data="books_add")
+            ],
+        ]
+    )
+
+
+def book_detail_keyboard(book_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура для детального просмотра книги"""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✏️ Редактировать", callback_data=f"book_edit:{book_id}"),
+                InlineKeyboardButton(text="🗑️ Удалить", callback_data=f"book_delete_confirm:{book_id}")
+            ],
+            [
+                InlineKeyboardButton(text="💬 Добавить цитату", callback_data=f"book_add_quote:{book_id}"),
+                InlineKeyboardButton(text="💭 Добавить мысль", callback_data=f"book_add_thought:{book_id}")
+            ],
+            [
+                InlineKeyboardButton(text="📖 Изменить статус", callback_data=f"book_change_status:{book_id}"),
+                InlineKeyboardButton(text="⭐ Оценить", callback_data=f"book_rate:{book_id}")
+            ],
+            [
+                InlineKeyboardButton(text="📚 Все цитаты", callback_data=f"book_view_quotes:{book_id}"),
+                InlineKeyboardButton(text="💭 Все мысли", callback_data=f"book_view_thoughts:{book_id}")
+            ],
+            [
+                InlineKeyboardButton(text="🤖 Спросить у ИИ", callback_data=f"book_ai_question:{book_id}")
+            ],
+            [
+                InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_books")
+            ],
+        ]
+    )
+
+
+def book_list_keyboard(books: list[tuple[int, str, str]], status_filter: str = None) -> InlineKeyboardMarkup:
+    """Клавиатура для списка книг"""
+    rows = []
+    for book_id, title, author in books:
+        author_text = f" - {author}" if author else ""
+        rows.append(
+            [
+                InlineKeyboardButton(text=f"📚 {title}{author_text}", callback_data=f"book_view:{book_id}"),
+            ]
+        )
+    
+    # Добавляем кнопку "Назад" на главное меню книг
+    rows.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_books")])
+    
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def book_edit_keyboard(book_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура для редактирования книги"""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✏️ Название", callback_data=f"book_edit_title:{book_id}"),
+                InlineKeyboardButton(text="✍️ Автор", callback_data=f"book_edit_author:{book_id}")
+            ],
+            [
+                InlineKeyboardButton(text="📝 Описание", callback_data=f"book_edit_description:{book_id}"),
+                InlineKeyboardButton(text="📚 Жанр", callback_data=f"book_edit_genre:{book_id}")
+            ],
+            [
+                InlineKeyboardButton(text="📄 Страницы", callback_data=f"book_edit_pages:{book_id}"),
+                InlineKeyboardButton(text="📅 Даты", callback_data=f"book_edit_dates:{book_id}")
+            ],
+            [
+                InlineKeyboardButton(text="⬅️ Назад", callback_data=f"book_view:{book_id}")
+            ],
+        ]
+    )
+
+
+def book_rating_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура для оценки книги"""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="⭐", callback_data="book_rate_1"),
+                InlineKeyboardButton(text="⭐⭐", callback_data="book_rate_2"),
+                InlineKeyboardButton(text="⭐⭐⭐", callback_data="book_rate_3")
+            ],
+            [
+                InlineKeyboardButton(text="⭐⭐⭐⭐", callback_data="book_rate_4"),
+                InlineKeyboardButton(text="⭐⭐⭐⭐⭐", callback_data="book_rate_5")
+            ],
+            [
+                InlineKeyboardButton(text="⬅️ Назад", callback_data="book_rating_cancel")
+            ],
+        ]
+    )
+
+
+def book_ai_menu() -> InlineKeyboardMarkup:
+    """Меню для вопросов к ИИ о книге"""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📖 Что за книга?", callback_data="book_ai_what_is"),
+                InlineKeyboardButton(text="💡 Основные идеи", callback_data="book_ai_main_ideas")
+            ],
+            [
+                InlineKeyboardButton(text="🎯 Кому подойдет", callback_data="book_ai_who_for"),
+                InlineKeyboardButton(text="📝 Краткое содержание", callback_data="book_ai_summary")
+            ],
+            [
+                InlineKeyboardButton(text="🔍 Анализ цитат", callback_data="book_ai_quotes_analysis"),
+                InlineKeyboardButton(text="💭 Персональный совет", callback_data="book_ai_personal_advice")
+            ],
+            [
+                InlineKeyboardButton(text="⬅️ Назад", callback_data="book_ai_back")
             ],
         ]
     )

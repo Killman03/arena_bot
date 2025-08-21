@@ -19,6 +19,8 @@ from .test_reminders import router as test_reminders_router
 from .settings_menu import router as settings_menu_router
 from .analysis import router as analysis_router
 from .health import router as health_router
+from .zip_import import router as zip_import_router
+from .books import router as books_router
 
 
 def setup_routers() -> Router:
@@ -42,6 +44,8 @@ def setup_routers() -> Router:
     router.include_router(settings_menu_router)
     router.include_router(analysis_router)
     router.include_router(health_router)
+    router.include_router(zip_import_router)
+    router.include_router(books_router)
     return router
 
 

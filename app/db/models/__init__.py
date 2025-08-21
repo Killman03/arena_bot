@@ -9,6 +9,7 @@ from .todo import Todo
 from .health import HealthMetric, HealthGoal, HealthReminder as HealthDailyReminder, GoogleFitToken
 from .motivation import Motivation
 from .challenge import Challenge, ChallengeLog
+from .book import Book, BookStatus, BookQuote, BookThought
 
 __all__ = [
     "User",
@@ -43,6 +44,10 @@ __all__ = [
     "Motivation",
     "Challenge",
     "ChallengeLog",
+    "Book",
+    "BookStatus",
+    "BookQuote",
+    "BookThought",
 ]
 
 
