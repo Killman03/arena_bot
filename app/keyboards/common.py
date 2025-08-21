@@ -25,6 +25,9 @@ def main_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="⚙️ Настройки", callback_data="menu_settings")
             ],
             [
+                InlineKeyboardButton(text="⚔️ Арена жизни", callback_data="arena_punishment")
+            ],
+            [
                 InlineKeyboardButton(text="❓ Помощь", callback_data="help"),
                 InlineKeyboardButton(text="📚 Руководство", callback_data="guide")
             ],

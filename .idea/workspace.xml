@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="89a35ec9-0a16-473d-bc4d-bafca81fd810" name="Changes" comment="ver 1.6">
+      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/app/handlers/gladiator_punishments.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/app/handlers/help_handlers.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/app/services/gladiator_punishments.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/handlers/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/handlers/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/handlers/menus.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/handlers/menus.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/keyboards/common.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/keyboards/common.py" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+    <option name="UPDATE_TYPE" value="REBASE" />
+  </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;Killman03&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/Killman03/voit_bot.git&quot;,
+    &quot;accountId&quot;: &quot;ebeef3be-a55f-4565-bf03-514bc9b3739a&quot;
+  }
+}</component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 4
+}</component>
+  <component name="ProjectId" id="316KZ62wDAMrNcpeqohtqIMmB4J" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;last_opened_file_path&quot;: &quot;C:/Users/Сергей/PycharmProjects/voit_bot&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable&quot;
+  }
+}</component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="C:\Users\Сергей\PycharmProjects\voit_bot" />
+    </key>
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-python-sdk-4c141bd692a7-e2d783800521-com.jetbrains.pycharm.community.sharedIndexes.bundled-PC-251.26927.90" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="89a35ec9-0a16-473d-bc4d-bafca81fd810" name="Changes" comment="" />
+      <created>1754839134581</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1754839134581</updated>
+    </task>
+    <task id="LOCAL-00001" summary="comm">
+      <option name="closed" value="true" />
+      <created>1754840342325</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1754840342325</updated>
+    </task>
+    <task id="LOCAL-00002" summary="ver 1.1">
+      <option name="closed" value="true" />
+      <created>1755149035313</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1755149035313</updated>
+    </task>
+    <task id="LOCAL-00003" summary="ver 1.1">
+      <option name="closed" value="true" />
+      <created>1755149057597</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1755149057597</updated>
+    </task>
+    <task id="LOCAL-00004" summary="ver 1.3">
+      <option name="closed" value="true" />
+      <created>1755529541726</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1755529541726</updated>
+    </task>
+    <task id="LOCAL-00005" summary="ver 1.4">
+      <option name="closed" value="true" />
+      <created>1755733006470</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1755733006470</updated>
+    </task>
+    <task id="LOCAL-00006" summary="ver 1.5">
+      <option name="closed" value="true" />
+      <created>1755796076292</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1755796076292</updated>
+    </task>
+    <task id="LOCAL-00007" summary="ver 1.6">
+      <option name="closed" value="true" />
+      <created>1755800011426</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1755800011426</updated>
+    </task>
+    <option name="localTasksCounter" value="8" />
+    <servers />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="comm" />
+    <MESSAGE value="ver 1.1" />
+    <MESSAGE value="ver 1.3" />
+    <MESSAGE value="ver 1.4" />
+    <MESSAGE value="ver 1.5" />
+    <MESSAGE value="ver 1.6" />
+    <option name="LAST_COMMIT_MESSAGE" value="ver 1.6" />
+  </component>
+</project>

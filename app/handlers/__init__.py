@@ -22,6 +22,7 @@ from .health import router as health_router
 from .zip_import import router as zip_import_router
 from .books import router as books_router
 from .help_handlers import router as help_handlers_router
+from .gladiator_punishments import router as gladiator_punishments_router
 
 
 def setup_routers() -> Router:
@@ -48,6 +49,7 @@ def setup_routers() -> Router:
     router.include_router(zip_import_router)
     router.include_router(books_router)
     router.include_router(help_handlers_router)
+    router.include_router(gladiator_punishments_router)
     return router
 
 
