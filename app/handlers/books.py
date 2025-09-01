@@ -7,6 +7,7 @@ from aiogram import Router, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from sqlalchemy import select, func
 from sqlalchemy.orm import joinedload
 
@@ -33,6 +34,13 @@ class BookFSM(StatesGroup):
     waiting_thought = State()
     waiting_rating = State()
     waiting_ai_question = State()
+
+
+# FSM для быстрого добавления цитат
+class BookQuoteFSM(StatesGroup):
+    waiting_quote = State()
+    waiting_book_selection = State()
+    waiting_page_number = State()
 
 
 # FSM для редактирования
@@ -500,7 +508,8 @@ async def book_add_thought_text(message: types.Message, state: FSMContext) -> No
     async with session_scope() as session:
         thought = BookThought(
             book_id=book_id,
-            thought_text=thought_text
+            thought_text=thought_text,
+            thought_type="insight"
         )
         session.add(thought)
         await session.commit()
@@ -519,6 +528,9 @@ async def book_add_thought_text(message: types.Message, state: FSMContext) -> No
 @router.callback_query(F.data.startswith("book_ai_question:"))
 async def book_ai_question_start(cb: types.CallbackQuery, state: FSMContext) -> None:
     """Начать вопрос к ИИ о книге"""
+    # Сразу отвечаем на callback query, чтобы избежать ошибки "query is too old"
+    await cb.answer()
+    
     book_id = int(cb.data.split(":")[1])
     await state.set_state(BookFSM.waiting_ai_question)
     await state.update_data(book_id=book_id)
@@ -529,12 +541,14 @@ async def book_ai_question_start(cb: types.CallbackQuery, state: FSMContext) -> 
         reply_markup=book_ai_menu(),
         parse_mode="HTML"
     )
-    await cb.answer()
 
 
 @router.callback_query(F.data.startswith("book_ai_"))
 async def book_ai_question_handle(cb: types.CallbackQuery, state: FSMContext) -> None:
     """Обработать предустановленные вопросы к ИИ"""
+    # Сразу отвечаем на callback query, чтобы избежать ошибки "query is too old"
+    await cb.answer()
+    
     question_type = cb.data.split("_")[1]
     data = await state.get_data()
     book_id = data["book_id"]
@@ -659,8 +673,6 @@ async def book_view_quotes(cb: types.CallbackQuery) -> None:
         return
     
     # Создаем клавиатуру для навигации по цитатам
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    
     quotes_text = f"📚 <b>Цитаты по книге «{book.title}»</b>\n\n"
     quotes_text += f"Всего цитат: {len(quotes)}\n\n"
     
@@ -719,8 +731,6 @@ async def book_view_thoughts(cb: types.CallbackQuery) -> None:
         return
     
     # Создаем клавиатуру для навигации по мыслям
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    
     thoughts_text = f"💭 <b>Мысли по книге «{book.title}»</b>\n\n"
     thoughts_text += f"Всего мыслей: {len(thoughts)}\n\n"
     
@@ -867,7 +877,6 @@ async def book_delete_confirm(cb: types.CallbackQuery) -> None:
     book_id = int(cb.data.split(":")[1])
     
     # Создаем клавиатуру подтверждения
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     confirm_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -1173,3 +1182,131 @@ async def books_search_handle(message: types.Message, state: FSMContext) -> None
             reply_markup=book_list_keyboard(book_list),
             parse_mode="HTML"
         )
+
+
+# ==================== ОБРАБОТЧИКИ БЫСТРОГО ДОБАВЛЕНИЯ ЦИТАТ ====================
+
+@router.message(BookQuoteFSM.waiting_quote)
+async def book_quote_text_handler(message: types.Message, state: FSMContext) -> None:
+    """Обработка текста цитаты для быстрого добавления"""
+    if len(message.text) > 1000:
+        await message.answer("❌ Цитата слишком длинная. Максимум 1000 символов.")
+        return
+    
+    await state.update_data(quote_text=message.text)
+    
+    # Получаем список книг из состояния
+    data = await state.get_data()
+    books = data.get("available_books", [])
+    
+    if not books:
+        await message.answer("❌ Ошибка: список книг не найден.")
+        await state.clear()
+        return
+    
+    # Создаем клавиатуру для выбора книги
+    keyboard = []
+    for book in books:
+        author_text = f" - {book.author}" if book.author else ""
+        status_icon = "📖" if book.status == BookStatus.reading else "✅"
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"{status_icon} {book.title}{author_text}",
+                callback_data=f"quick_quote_book:{book.id}"
+            )
+        ])
+    
+    keyboard.append([InlineKeyboardButton(text="⬅️ Отмена", callback_data="back_main")])
+    
+    await state.set_state(BookQuoteFSM.waiting_book_selection)
+    await message.answer(
+        "📚 <b>Выберите книгу для цитаты</b>\n\n"
+        "К какой книге относится эта цитата?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data.startswith("quick_quote_book:"))
+async def book_quote_book_selection_handler(cb: types.CallbackQuery, state: FSMContext) -> None:
+    """Обработка выбора книги для цитаты"""
+    book_id = int(cb.data.split(":")[1])
+    
+    await state.update_data(selected_book_id=book_id)
+    await state.set_state(BookQuoteFSM.waiting_page_number)
+    
+    await cb.message.edit_text(
+        "📄 <b>Укажите номер страницы</b>\n\n"
+        "Введите номер страницы, где находится цитата (или '-' чтобы пропустить):",
+        reply_markup=back_main_menu(),
+        parse_mode="HTML"
+    )
+    await cb.answer()
+
+
+@router.message(BookQuoteFSM.waiting_page_number)
+async def book_quote_page_handler(message: types.Message, state: FSMContext) -> None:
+    """Обработка номера страницы для цитаты"""
+    page_text = message.text.strip()
+    page_number = None
+    
+    if page_text != "-":
+        try:
+            page_number = int(page_text)
+            if page_number < 0:
+                await message.answer("❌ Номер страницы должен быть положительным числом.")
+                return
+        except ValueError:
+            await message.answer("❌ Введите корректный номер страницы или '-' чтобы пропустить.")
+            return
+    
+    # Получаем данные из состояния
+    data = await state.get_data()
+    quote_text = data.get("quote_text")
+    book_id = data.get("selected_book_id")
+    
+    if not quote_text or not book_id:
+        await message.answer("❌ Ошибка: данные цитаты не найдены.")
+        await state.clear()
+        return
+    
+    # Сохраняем цитату в базу данных
+    user = message.from_user
+    
+    async with session_scope() as session:
+        db_user = (await session.execute(select(User).where(User.telegram_id == user.id))).scalar_one()
+        
+        # Проверяем, что книга принадлежит пользователю
+        book = await session.execute(
+            select(Book).where(Book.id == book_id, Book.user_id == db_user.id)
+        )
+        book = book.scalar_one_or_none()
+        
+        if not book:
+            await message.answer("❌ Ошибка: книга не найдена.")
+            await state.clear()
+            return
+        
+        # Создаем новую цитату
+        new_quote = BookQuote(
+            book_id=book_id,
+            quote_text=quote_text,
+            page_number=page_number
+        )
+        session.add(new_quote)
+        await session.commit()
+    
+    await state.clear()
+    
+    # Формируем сообщение об успехе
+    page_info = f" (стр. {page_number})" if page_number else ""
+    author_text = f" - {book.author}" if book.author else ""
+    
+    await message.answer(
+        f"✅ <b>Цитата успешно добавлена!</b>\n\n"
+        f"📚 Книга: {book.title}{author_text}\n"
+        f"📝 Цитата: {quote_text[:100]}{'...' if len(quote_text) > 100 else ''}{page_info}\n\n"
+        f"Цитата сохранена в разделе книг.",
+        reply_markup=back_main_menu(),
+        parse_mode="HTML"
+    )

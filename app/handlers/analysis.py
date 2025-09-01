@@ -9,7 +9,7 @@ from sqlalchemy import select, desc
 from sqlalchemy.orm import selectinload
 
 from app.db.session import session_scope
-from app.db.models import User, WeeklyRetro, Goal, FinanceTransaction, Challenge, ChallengeLog
+from app.db.models import User, WeeklyRetro, Goal, FinanceTransaction
 from app.keyboards.common import analysis_menu, back_main_menu
 from app.services.llm import deepseek_complete
 
@@ -299,7 +299,7 @@ async def get_recent_user_data(session, user_id: int) -> dict[str, Any]:
     recent_data = {
         "goals": [],
         "finances": [],
-        "challenges": []
+
     }
     
     # Последние цели
@@ -321,14 +321,7 @@ async def get_recent_user_data(session, user_id: int) -> dict[str, Any]:
     recent_data["finances"] = [{"amount": f.amount, "category": f.category, "description": f.description} for f in finances]
     
     # Последние логи челленджей
-    challenge_logs = (await session.execute(
-        select(ChallengeLog)
-        .join(Challenge, ChallengeLog.challenge_id == Challenge.id)
-        .where(Challenge.user_id == user_id)
-        .order_by(desc(ChallengeLog.created_at))
-        .limit(10)
-    )).scalars().all()
-    recent_data["challenges"] = [{"completed": c.completed, "note": c.note} for c in challenge_logs]
+
     
     return recent_data
 
@@ -348,12 +341,12 @@ async def generate_ai_analysis(analysis_data: dict, recent_data: dict) -> str:
 Последние данные пользователя:
 - Цели: {len(recent_data['goals'])} записей
 - Финансы: {len(recent_data['finances'])} записей
-- Челленджи: {len(recent_data['challenges'])} записей
+
 
 Детали последних записей:
 Цели: {recent_data['goals']}
 Финансы: {recent_data['finances']}
-Челленджи: {recent_data['challenges']}
+
 """
     
     system_prompt = """Ты - персональный коуч и аналитик. Проанализируй данные пользователя и дай конкретные, практические рекомендации для улучшения его результатов на следующей неделе. 

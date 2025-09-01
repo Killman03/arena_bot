@@ -12,6 +12,8 @@ from app.db.models import Goal, GoalScope, GoalStatus, ABAnalysis, User
 from app.db.models.goal import GoalReminder
 from app.db.session import session_scope
 from app.services.llm import deepseek_complete
+from app.utils.timezone_utils import get_user_time_info
+from app.keyboards.common import back_main_menu
 
 
 router = Router()
@@ -21,7 +23,6 @@ router = Router()
 class GoalFSM(StatesGroup):
     waiting_title = State()
     waiting_description = State()
-    waiting_scope = State()
     waiting_due_date = State()
     waiting_reminder_time = State()
 
@@ -175,7 +176,6 @@ async def goals_smart_hint(cb: types.CallbackQuery) -> None:
         "• `/smart 1m Название | Описание | 2025-06-01` - SMART цель на месяц"
     )
     
-    from app.keyboards.common import back_main_menu
     await cb.message.edit_text(text, reply_markup=back_main_menu(), parse_mode="Markdown")
     await cb.answer()
 
@@ -195,7 +195,6 @@ async def goals_add_start(cb: types.CallbackQuery, state: FSMContext) -> None:
         "• Выучить английский до уровня B2"
     )
     
-    from app.keyboards.common import back_main_menu
     await cb.message.edit_text(text, reply_markup=back_main_menu(), parse_mode=None)
     await cb.answer()
 
@@ -216,57 +215,13 @@ async def goals_add_title(message: types.Message, state: FSMContext) -> None:
         "• Заниматься с репетитором 2 раза в неделю"
     )
     
-    from app.keyboards.common import back_main_menu
     await message.answer(text, reply_markup=back_main_menu(), parse_mode=None)
 
 
 @router.message(GoalFSM.waiting_description)
 async def goals_add_description(message: types.Message, state: FSMContext) -> None:
-    """Сохраняет описание цели и запрашивает срок."""
+    """Сохраняет описание цели и запрашивает дату завершения."""
     await state.update_data(description=message.text.strip())
-    await state.set_state(GoalFSM.waiting_scope)
-    
-    text = (
-        "⏰ Срок достижения цели:\n\n"
-        "Выберите срок для вашей цели:\n\n"
-        "Доступные сроки:\n"
-        "• 1d - один день\n"
-        "• 1w - одна неделя\n"
-        "• 1m - один месяц\n"
-        "• 3m - три месяца\n"
-        "• 6m - полгода\n"
-        "• 1y - один год\n"
-        "• 5y - пять лет\n\n"
-        "Введите код срока (например: 1m)"
-    )
-    
-    from app.keyboards.common import back_main_menu
-    await message.answer(text, reply_markup=back_main_menu(), parse_mode=None)
-
-
-@router.message(GoalFSM.waiting_scope)
-async def goals_add_scope(message: types.Message, state: FSMContext) -> None:
-    """Сохраняет срок цели и запрашивает дату завершения."""
-    scope_text = message.text.strip().lower()
-    scope_map = {
-        "1d": GoalScope.day,
-        "1w": GoalScope.week,
-        "1m": GoalScope.month,
-        "3m": GoalScope.three_months,
-        "6m": GoalScope.six_months,
-        "1y": GoalScope.year,
-        "5y": GoalScope.five_years
-    }
-    
-    if scope_text not in scope_map:
-        await message.answer(
-            "❌ Неверный формат срока. Используйте: 1d, 1w, 1m, 3m, 6m, 1y, 5y\n\n"
-            "Попробуйте снова:",
-            reply_markup=back_main_menu()
-        )
-        return
-    
-    await state.update_data(scope=scope_map[scope_text])
     await state.set_state(GoalFSM.waiting_due_date)
     
     text = (
@@ -279,13 +234,15 @@ async def goals_add_scope(message: types.Message, state: FSMContext) -> None:
         "Или введите 'сегодня' для цели на сегодня"
     )
     
-    from app.keyboards.common import back_main_menu
     await message.answer(text, reply_markup=back_main_menu(), parse_mode=None)
+
+
+
 
 
 @router.message(GoalFSM.waiting_due_date)
 async def goals_add_due_date(message: types.Message, state: FSMContext) -> None:
-    """Сохраняет дату завершения цели и запрашивает время напоминания."""
+    """Сохраняет дату завершения цели, определяет scope и запрашивает время напоминания."""
     due_date_text = message.text.strip().lower()
     
     if due_date_text == "сегодня":
@@ -293,31 +250,52 @@ async def goals_add_due_date(message: types.Message, state: FSMContext) -> None:
     else:
         try:
             # Парсим дату в формате ДД.ММ.ГГГГ
-            day, month, year = due_date_text.split(".")
-            due_date = date(int(year), int(month), int(day))
-        except ValueError:
+            if "." in due_date_text:
+                day, month, year = due_date_text.split(".")
+                due_date = date(int(year), int(month), int(day))
+            else:
+                # Пробуем ISO формат как fallback
+                due_date = date.fromisoformat(due_date_text)
+        except (ValueError, IndexError):
             await message.answer(
-                "❌ Неверный формат даты. Используйте формат ДД.ММ.ГГГГ\n\n"
+                "❌ Неверный формат даты. Используйте ДД.ММ.ГГГГ или 'сегодня'\n\n"
                 "Попробуйте снова:",
                 reply_markup=back_main_menu()
             )
             return
     
-    await state.update_data(due_date=due_date)
+    # Определяем scope на основе разницы в днях
+    today = date.today()
+    days_diff = (due_date - today).days
+    
+    if days_diff <= 1:
+        scope = GoalScope.day
+    elif days_diff <= 7:
+        scope = GoalScope.week
+    elif days_diff <= 30:
+        scope = GoalScope.month
+    elif days_diff <= 90:
+        scope = GoalScope.three_months
+    elif days_diff <= 180:
+        scope = GoalScope.six_months
+    elif days_diff <= 365:
+        scope = GoalScope.year
+    else:
+        scope = GoalScope.five_years
+    
+    await state.update_data(due_date=due_date, scope=scope)
     await state.set_state(GoalFSM.waiting_reminder_time)
     
     text = (
         "⏰ Время напоминания:\n\n"
-        "Введите время ежедневного напоминания в формате ЧЧ:ММ\n\n"
+        "Введите время для ежедневных напоминаний о цели в формате ЧЧ:ММ\n\n"
         "Примеры:\n"
         "• 09:00 - утром\n"
-        "• 12:00 - в обед\n"
         "• 18:00 - вечером\n"
         "• 21:00 - перед сном\n\n"
-        "Или введите 'нет' если напоминания не нужны"
+        "Напоминания будут приходить каждый день в указанное время"
     )
     
-    from app.keyboards.common import back_main_menu
     await message.answer(text, reply_markup=back_main_menu(), parse_mode=None)
 
 
@@ -354,6 +332,15 @@ async def goals_add_reminder_time(message: types.Message, state: FSMContext) -> 
         
         # Если указано время напоминания, создаем напоминание
         if reminder_time:
+            # Логируем локальное время пользователя
+            time_info = get_user_time_info(db_user.timezone)
+            print(f"🕐 Создание напоминания для цели '{title}' пользователем {db_user.telegram_id}")
+            print(f"   📍 Часовой пояс: {time_info['timezone']}")
+            print(f"   🕐 Локальное время пользователя: {time_info['user_local_time'].strftime('%H:%M:%S')}")
+            print(f"   🌍 UTC время: {time_info['utc_time'].strftime('%H:%M:%S')}")
+            print(f"   ⏰ Время напоминания: {reminder_time}")
+            print(f"   📊 Смещение: {time_info['offset_hours']:+g} ч")
+            
             reminder = GoalReminder(
                 user_id=db_user.id,
                 goal_id=goal.id,
@@ -366,7 +353,7 @@ async def goals_add_reminder_time(message: types.Message, state: FSMContext) -> 
     
     # Генерируем SMART-описание
     status_msg = await message.answer("⏳ Генерирую SMART-описание...")
-    smart_prompt = f"Оцени цель пользователя и оформи SMART-описание кратко: '{title}'. Выведи 5 пунктов: S,M,A,R,T."
+    smart_prompt = f"Оцени цель пользователя и оформи SMART-описание: '{title}'. Выведи 5 пунктов с разметкой Markdown:\n\n**S (Конкретность):**\n**M (Измеримость):**\n**A (Достижимость):**\n**R (Релевантность):**\n**T (Ограниченность во времени):**"
     
     try:
         smart = await deepseek_complete(smart_prompt, system="Ты коуч по целям. Кратко и по делу.")
@@ -375,21 +362,22 @@ async def goals_add_reminder_time(message: types.Message, state: FSMContext) -> 
         
         await status_msg.edit_text(
             f"🎯 Цель создана успешно! ✅\n\n"
-            f"Название: {title}\n"
-            f"Описание: {description}\n"
-            f"Срок: {due_date.strftime('%d.%m.%Y')}\n"
-            f"Напоминания: {'Да' if reminder_time else 'Нет'}\n\n"
-            f"SMART-описание:\n{smart}",
-            parse_mode=None
+            f"**Название:** {title}\n"
+            f"**Описание:** {description}\n"
+            f"**Срок:** {due_date.strftime('%d.%m.%Y')}\n"
+            f"**Напоминания:** {'Да' if reminder_time else 'Нет'}\n\n"
+            f"**SMART-описание:**\n{smart}",
+            parse_mode="Markdown"
         )
     except Exception:
         await status_msg.edit_text(
             f"🎯 Цель создана успешно! ✅\n\n"
-            f"Название: {title}\n"
-            f"Описание: {description}\n"
-            f"Срок: {due_date.strftime('%d.%m.%Y')}\n"
-            f"Напоминания: {'Да' if reminder_time else 'Нет'}\n\n"
-            f"⚠️ Не удалось сгенерировать SMART-описание"
+            f"**Название:** {title}\n"
+            f"**Описание:** {description}\n"
+            f"**Срок:** {due_date.strftime('%d.%m.%Y')}\n"
+            f"**Напоминания:** {'Да' if reminder_time else 'Нет'}\n\n"
+            f"⚠️ Не удалось сгенерировать SMART-описание",
+            parse_mode="Markdown"
         )
     
     await state.clear()
@@ -464,7 +452,6 @@ async def goal_edit_select(cb: types.CallbackQuery, state: FSMContext) -> None:
             f"Введите новое название цели:"
         )
         
-        from app.keyboards.common import back_main_menu
         await cb.message.edit_text(text, reply_markup=back_main_menu(), parse_mode=None)
         await cb.answer()
 
@@ -509,7 +496,6 @@ async def goals_reminders(cb: types.CallbackQuery) -> None:
         
         text += "💡 Напоминания приходят ежедневно в указанное время с мотивирующими сообщениями!"
         
-        from app.keyboards.common import back_main_menu
         await cb.message.edit_text(text, reply_markup=back_main_menu(), parse_mode=None)
         await cb.answer()
 
@@ -525,7 +511,7 @@ async def test_reminder(message: types.Message) -> None:
         from app.services.goal_reminders import send_test_reminder
         
         await message.answer("🧪 Отправляю тестовое напоминание...")
-        await send_test_reminder(user.id, "Тестовая цель")
+        await send_test_reminder(user.id, "Тестовая цель", message.bot)
         
     except Exception as e:
         await message.answer(f"❌ Ошибка отправки тестового напоминания: {str(e)}")

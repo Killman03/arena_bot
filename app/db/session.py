@@ -11,7 +11,7 @@ from .base import Base
 
 
 def _build_async_engine() -> AsyncEngine:
-    database_url = settings.database_url
+    database_url = settings.DATABASE_URL
     if database_url.startswith("postgresql://"):
         # Enforce async driver
         database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)

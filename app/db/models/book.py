@@ -71,3 +71,19 @@ class BookThought(Base):
 
     # Relationships
     book: Mapped[Book] = relationship("Book", back_populates="thoughts")
+
+
+class GeneralThought(Base):
+    """General thoughts not tied to specific books."""
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), index=True)
+    thought_text: Mapped[str] = mapped_column(Text)
+    thought_type: Mapped[str] = mapped_column(String(50), default="general")  # general, insight, reflection, etc.
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+
+    # Relationships
+    user: Mapped["User"] = relationship("User")
+
+
+

@@ -5,15 +5,13 @@ from app.services.llm import deepseek_complete
 
 async def generate_gladiator_punishment(
     overdue_goals: List[Dict[str, Any]],
-    overdue_challenges: List[Dict[str, Any]],
     overdue_todos: List[Dict[str, Any]]
 ) -> str:
     """
     Генерирует гладиаторское наказание для просроченных дедлайнов
     
-    Args:
+        Args:
         overdue_goals: Список просроченных целей
-        overdue_challenges: Список просроченных челленджей  
         overdue_todos: Список просроченных задач
     
     Returns:
@@ -30,12 +28,7 @@ async def generate_gladiator_punishment(
             goals_text += f"• {goal['title']} (просрочено на {days_overdue} дней)\n"
         overdue_items.append(goals_text)
     
-    if overdue_challenges:
-        challenges_text = "🏆 Просроченные челленджи:\n"
-        for challenge in overdue_challenges:
-            days_overdue = challenge.get('days_overdue', 0)
-            challenges_text += f"• {challenge['title']} (просрочено на {days_overdue} дней)\n"
-        overdue_items.append(challenges_text)
+
     
     if overdue_todos:
         todos_text = "📝 Просроченные задачи:\n"

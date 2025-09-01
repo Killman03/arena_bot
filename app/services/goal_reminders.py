@@ -1,12 +1,17 @@
 import random
 from datetime import datetime, time
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Set
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Goal, GoalReminder, User
-from app.bot import bot
+from app.db.models.goal import GoalStatus
+from app.utils.timezone_utils import get_user_time_info
+
+# Глобальный словарь для отслеживания отправленных напоминаний
+# Формат: {reminder_key: last_sent_date}
+_sent_reminders_cache: Dict[str, str] = {}
 
 
 # Мотивирующие сообщения для напоминаний
@@ -32,7 +37,7 @@ async def get_active_goal_reminders(session: AsyncSession) -> List[Tuple[Goal, G
             .join(GoalReminder, Goal.id == GoalReminder.goal_id)
             .join(User, Goal.user_id == User.id)
             .where(
-                Goal.status == "active",
+                Goal.status == GoalStatus.active,
                 GoalReminder.is_active == True
             )
         )
@@ -47,26 +52,66 @@ def get_random_motivation_message(goal_title: str) -> str:
     return message_template.format(goal_title=goal_title)
 
 
-async def send_goal_reminders(session: AsyncSession) -> None:
+def _cleanup_old_reminders_cache() -> None:
+    """Очищает старые записи из кэша отправленных напоминаний."""
+    global _sent_reminders_cache
+    today = datetime.now().strftime("%Y-%m-%d")
+    
+    # Удаляем записи старше сегодняшнего дня
+    keys_to_remove = [
+        key for key, date in _sent_reminders_cache.items() 
+        if date != today
+    ]
+    
+    for key in keys_to_remove:
+        del _sent_reminders_cache[key]
+
+
+async def send_goal_reminders(session: AsyncSession, bot=None) -> None:
     """Отправляет напоминания по целям всем пользователям."""
-    current_time = datetime.now().time()
+    if bot is None:
+        from app.bot import bot
+    
+    # Очищаем старые записи из кэша
+    _cleanup_old_reminders_cache()
     
     # Получаем все активные напоминания
     reminders = await get_active_goal_reminders(session)
     
     for goal, reminder, user in reminders:
         try:
-            # Проверяем, подходит ли время для отправки
+            # Создаем уникальный ключ для этого напоминания
+            reminder_key = f"{user.id}_{goal.id}_{reminder.reminder_time}"
+            
+            # Проверяем, было ли уже отправлено это напоминание сегодня
+            today = datetime.now().strftime("%Y-%m-%d")
+            if _sent_reminders_cache.get(reminder_key) == today:
+                continue
+            
+            # Получаем локальное время пользователя
+            time_info = get_user_time_info(user.timezone)
+            user_local_time = time_info['user_local_time']
+            
+            # Проверяем, подходит ли время для отправки (по локальному времени пользователя)
             reminder_time = time.fromisoformat(reminder.reminder_time)
             
-            # Отправляем напоминание если текущее время совпадает с временем напоминания
+            # Отправляем напоминание если локальное время пользователя совпадает с временем напоминания
             # (с погрешностью в 1 минуту)
             time_diff = abs(
-                (current_time.hour * 60 + current_time.minute) - 
+                (user_local_time.hour * 60 + user_local_time.minute) - 
                 (reminder_time.hour * 60 + reminder_time.minute)
             )
             
             if time_diff <= 1:  # В пределах 1 минуты
+                # Логируем локальное время пользователя
+                time_info = get_user_time_info(user.timezone)
+                print(f"🕐 Отправка напоминания по цели '{goal.title}' пользователю {user.telegram_id}")
+                print(f"   📍 Часовой пояс: {time_info['timezone']}")
+                print(f"   🕐 Локальное время пользователя: {time_info['user_local_time'].strftime('%H:%M:%S')}")
+                print(f"   🌍 UTC время: {time_info['utc_time'].strftime('%H:%M:%S')}")
+                print(f"   ⏰ Время напоминания: {reminder.reminder_time}")
+                print(f"   📊 Смещение: {time_info['offset_hours']:+g} ч")
+                
                 # Получаем случайное мотивирующее сообщение
                 motivation_message = get_random_motivation_message(goal.title)
                 
@@ -86,14 +131,20 @@ async def send_goal_reminders(session: AsyncSession) -> None:
                     parse_mode=None
                 )
                 
+                # Отмечаем напоминание как отправленное
+                _sent_reminders_cache[reminder_key] = today
+                
                 print(f"Отправлено напоминание пользователю {user.telegram_id} по цели: {goal.title}")
                 
         except Exception as e:
             print(f"Ошибка отправки напоминания пользователю {user.telegram_id}: {e}")
 
 
-async def send_test_reminder(user_id: int, goal_title: str = "Тестовая цель") -> None:
+async def send_test_reminder(user_id: int, goal_title: str = "Тестовая цель", bot=None) -> None:
     """Отправляет тестовое напоминание (для проверки)."""
+    if bot is None:
+        from app.bot import bot
+        
     try:
         motivation_message = get_random_motivation_message(goal_title)
         

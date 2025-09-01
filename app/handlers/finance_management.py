@@ -5,6 +5,7 @@ from decimal import Decimal
 from typing import Any
 
 from aiogram import Router, types, F
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy import select
@@ -13,6 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import session_scope
 from app.db.models import User, Creditor, Debtor, Income, FinanceTransaction, FinancialGoal
 from app.keyboards.common import creditor_debtor_menu, back_main_menu
+from app.services.finance_reminders import send_finance_reminders_for_user
+from app.services.finance_todo_manager import create_todo_for_financial_obligations
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from app.services.llm import deepseek_complete
 
@@ -69,7 +72,8 @@ async def creditor_add_start(cb: types.CallbackQuery, state: FSMContext) -> None
     await state.set_state(CreditorStates.waiting_for_name)
     await cb.message.edit_text(
         "💸 <b>Добавление кредитора</b>\n\n"
-        "<b>Шаг 1/4:</b> Введите имя кредитора (кому должны деньги):",
+        "<b>Кредитор</b> - это человек/организация, которой ВЫ должны деньги.\n\n"
+        "<b>Шаг 1/4:</b> Введите имя кредитора (кому ВЫ должны деньги):",
         reply_markup=back_main_menu(),
         parse_mode="HTML"
     )
@@ -146,7 +150,7 @@ async def creditor_description_handler(message: types.Message, state: FSMContext
     await message.answer(
         f"✅ <b>Кредитор добавлен!</b>\n\n"
         f"👤 <b>Имя:</b> {data['name']}\n"
-        f"💰 <b>Сумма:</b> {data['amount']:,.2f} ₽\n"
+        f"💰 <b>Сумма долга:</b> {data['amount']:,.2f} ₽ (ВЫ должны)\n"
         f"📅 <b>Дата выплаты:</b> {data['due_date'].strftime('%d.%m.%Y')}\n"
         f"📝 <b>Описание:</b> {data['description'] or 'Не указано'}",
         reply_markup=back_main_menu(),
@@ -160,7 +164,8 @@ async def debtor_add_start(cb: types.CallbackQuery, state: FSMContext) -> None:
     await state.set_state(DebtorStates.waiting_for_name)
     await cb.message.edit_text(
         "🏦 <b>Добавление должника</b>\n\n"
-        "<b>Шаг 1/4:</b> Введите имя должника (кто должен деньги):",
+        "<b>Должник</b> - это человек/организация, которая должна деньги ВАМ.\n\n"
+        "<b>Шаг 1/4:</b> Введите имя должника (кто должен деньги ВАМ):",
         reply_markup=back_main_menu(),
         parse_mode="HTML"
     )
@@ -237,7 +242,7 @@ async def debtor_description_handler(message: types.Message, state: FSMContext) 
     await message.answer(
         f"✅ <b>Должник добавлен!</b>\n\n"
         f"👤 <b>Имя:</b> {data['name']}\n"
-        f"💰 <b>Сумма:</b> {data['amount']:,.2f} ₽\n"
+        f"💰 <b>Сумма долга:</b> {data['amount']:,.2f} ₽ (должен ВАМ)\n"
         f"📅 <b>Дата выплаты:</b> {data['due_date'].strftime('%d.%m.%Y')}\n"
         f"📝 <b>Описание:</b> {data['description'] or 'Не указано'}",
         reply_markup=back_main_menu(),
@@ -1424,3 +1429,30 @@ async def finance_categories_detailed_handler(cb: types.CallbackQuery) -> None:
         )
     
     await cb.answer()
+
+
+@router.message(Command("test_finance_todo"))
+async def test_finance_todo_creation(message: types.Message) -> None:
+    """Тестирование создания задач To-Do для финансовых обязательств"""
+    try:
+        async with session_scope() as session:
+            db_user = (await session.execute(
+                select(User).where(User.telegram_id == message.from_user.id)
+            )).scalar_one()
+            
+            # Создаем задачи для финансовых обязательств
+            await create_todo_for_financial_obligations(session, db_user.id)
+            
+            await message.answer(
+                "✅ <b>Тест создания задач To-Do для финансовых обязательств</b>\n\n"
+                "Задачи для финансовых обязательств, срок которых наступил сегодня, "
+                "были созданы в вашем To-Do списке.\n\n"
+                "Проверьте раздел To-Do для просмотра созданных задач.",
+                parse_mode="HTML"
+            )
+            
+    except Exception as e:
+        await message.answer(
+            f"❌ <b>Ошибка при тестировании:</b>\n{str(e)}",
+            parse_mode="HTML"
+        )

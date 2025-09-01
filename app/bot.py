@@ -21,7 +21,7 @@ async def main() -> None:
     # Ensure tables for local run (prefer Alembic for production)
     await create_all()
 
-    bot = Bot(token=settings.bot_token, default=DefaultBotProperties(parse_mode="HTML"))
+    bot = Bot(token=settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
     dp = Dispatcher()
     dp.message.middleware(InteractionLoggingMiddleware())
     dp.include_router(setup_routers())

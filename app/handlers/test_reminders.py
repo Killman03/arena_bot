@@ -10,7 +10,7 @@ from sqlalchemy import select
 from app.db.session import session_scope
 from app.db.models import User
 from app.db.models.motivation import Motivation
-from app.db.models.challenge import Challenge
+
 from app.services.reminders import LAWS_OF_ARENA
 
 router = Router()
@@ -23,7 +23,7 @@ async def test_reminders(message: types.Message) -> None:
     if not user:
         return
 
-    sent = {"principle": False, "motivation": False, "challenges": 0}
+    sent = {"principle": False, "motivation": False}
 
     # Daily principle
     principle = random.choice(LAWS_OF_ARENA)
@@ -48,27 +48,12 @@ async def test_reminders(message: types.Message) -> None:
             except Exception:
                 pass
 
-        # Challenge reminders (simulate for today if allowed by days_mask and active)
-        weekday = datetime.now().weekday()  # Mon=0 .. Sun=6
-        ch_list = (
-            await session.execute(select(Challenge).where(Challenge.user_id == db_user.id))
-        ).scalars().all()
-        for ch in ch_list:
-            if not ch.is_active:
-                continue
-            if len(ch.days_mask) == 7 and ch.days_mask[weekday] != "1":
-                continue
-            try:
-                await message.answer(f"🏆 Напоминание по челленджу (тест): {ch.title}")
-                sent["challenges"] += 1
-            except Exception:
-                continue
+
 
     await message.answer(
         "Итог теста напоминаний:\n"
         f"- принцип: {'ok' if sent['principle'] else 'нет'}\n"
-        f"- мотивация: {'ok' if sent['motivation'] else 'нет'}\n"
-        f"- челленджи: {sent['challenges']}",
+        f"- мотивация: {'ok' if sent['motivation'] else 'нет'}",
         parse_mode=None,
     )
 

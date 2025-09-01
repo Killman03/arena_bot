@@ -15,6 +15,8 @@ class Todo(Base):
     is_completed: Mapped[bool] = mapped_column(Boolean, default=False)
     is_daily: Mapped[bool] = mapped_column(Boolean, default=False)
     priority: Mapped[str] = mapped_column(String(20), default="medium")  # low, medium, high
+    reminder_time: Mapped[str] = mapped_column(String(5), nullable=True)  # Format: "HH:MM"
+    is_reminder_active: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     
     # Связи

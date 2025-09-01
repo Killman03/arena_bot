@@ -1,6 +1,53 @@
 from __future__ import annotations
 
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
+
+
+def start_keyboard() -> ReplyKeyboardMarkup:
+    """Клавиатура с кнопкой Старт"""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="🚀 Старт")]
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=False
+    )
+
+
+def main_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Основная клавиатура с быстрыми действиями"""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                KeyboardButton(text="📝 Записать цитату"),
+                KeyboardButton(text="📚 Записать мысль")
+            ],
+            [
+                KeyboardButton(text="📋 Добавить в To-Do"),
+                KeyboardButton(text="💰 Добавить расход")
+            ],
+            [
+                KeyboardButton(text="🎯 Добавить цель"),
+                KeyboardButton(text="✨ Один идеальный день")
+            ],
+            [
+                KeyboardButton(text="💭 Просмотр мыслей"),
+                KeyboardButton(text="🏠 Главное меню")
+            ]
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=False
+    )
+
+
+def hide_keyboard() -> ReplyKeyboardMarkup:
+    """Скрыть клавиатуру"""
+    return ReplyKeyboardMarkup(
+        keyboard=[],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+        selective=True
+    )
 
 
 def main_menu() -> InlineKeyboardMarkup:
@@ -11,7 +58,6 @@ def main_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="💰 Финансы", callback_data="menu_finance")
             ],
             [
-                InlineKeyboardButton(text="🏆 Челленджи", callback_data="menu_challenges"),
                 InlineKeyboardButton(text="🔥 Мотивация", callback_data="menu_motivation"),
                 InlineKeyboardButton(text="📊 Анализ", callback_data="menu_analysis")
             ],
@@ -22,13 +68,17 @@ def main_menu() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(text="📚 Книги", callback_data="menu_books"),
-                InlineKeyboardButton(text="⚙️ Настройки", callback_data="menu_settings")
+                InlineKeyboardButton(text="💭 Просмотр мыслей", callback_data="view_thoughts")
             ],
             [
-                InlineKeyboardButton(text="⚔️ Арена жизни", callback_data="arena_punishment")
+                InlineKeyboardButton(text="⚔️ Арена жизни", callback_data="arena_punishment"),
+                InlineKeyboardButton(text="✨ Один идеальный день", callback_data="perfect_day_plan")
             ],
             [
-                InlineKeyboardButton(text="❓ Помощь", callback_data="help"),
+                InlineKeyboardButton(text="⚙️ Настройки", callback_data="menu_settings"),
+                InlineKeyboardButton(text="❓ Помощь", callback_data="help")
+            ],
+            [
                 InlineKeyboardButton(text="📚 Руководство", callback_data="guide")
             ],
         ]
@@ -37,6 +87,47 @@ def main_menu() -> InlineKeyboardMarkup:
 
 def back_main_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")]])
+
+
+def settings_menu() -> InlineKeyboardMarkup:
+    """Меню настроек"""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🌍 Выбрать таймзону", callback_data="settings_timezone")
+            ],
+            [
+                InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")
+            ]
+        ]
+    )
+
+
+def quick_actions_menu() -> InlineKeyboardMarkup:
+    """Меню быстрых действий"""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📝 Записать цитату", callback_data="quick_add_quote"),
+                InlineKeyboardButton(text="📋 Добавить в To-Do", callback_data="quick_add_todo")
+            ],
+            [
+                InlineKeyboardButton(text="💰 Добавить расход", callback_data="quick_add_expense"),
+                InlineKeyboardButton(text="⏰ Создать напоминание", callback_data="quick_add_reminder")
+            ],
+            [
+                InlineKeyboardButton(text="🎯 Добавить цель", callback_data="quick_add_goal"),
+                InlineKeyboardButton(text="📚 Записать мысль", callback_data="quick_add_thought")
+            ],
+            [
+                InlineKeyboardButton(text="✨ Один идеальный день", callback_data="perfect_day_plan"),
+                InlineKeyboardButton(text="💭 Просмотр мыслей", callback_data="view_thoughts")
+            ],
+            [
+                InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")
+            ]
+        ]
+    )
 
 
 def goals_menu() -> InlineKeyboardMarkup:
@@ -59,70 +150,10 @@ def goals_menu() -> InlineKeyboardMarkup:
     )
 
 
-def challenges_menu() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="📃 Список", callback_data="ch_list"),
-                InlineKeyboardButton(text="➕ Добавить", callback_data="ch_add"),
-                InlineKeyboardButton(text="❓ Помощь", callback_data="challenges_help")
-            ],
-            [
-                InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")
-            ],
-        ]
-    )
 
 
-def challenges_list_keyboard(ch_items: list[tuple[int, str]]) -> InlineKeyboardMarkup:
-    rows = []
-    for ch_id, title in ch_items:
-        rows.append(
-            [
-                InlineKeyboardButton(text=title, callback_data=f"ch_open:{ch_id}"),
-            ]
-        )
-    rows.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_challenges")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def challenge_detail_keyboard(ch_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="✅ Отметить выполненным", callback_data=f"ch_done:{ch_id}"),
-                InlineKeyboardButton(text="⏰ Изменить время", callback_data=f"ch_time:{ch_id}")
-            ],
-            [
-                InlineKeyboardButton(text="✏️ Изменить текст", callback_data=f"ch_edit:{ch_id}"),
-                InlineKeyboardButton(text="📅 Изменить дату окончания", callback_data=f"ch_edit_end_date:{ch_id}")
-            ],
-            [
-                InlineKeyboardButton(text="🟢/🔴 Активен", callback_data=f"ch_toggle:{ch_id}"),
-                InlineKeyboardButton(text="⬅️ Назад", callback_data="ch_list")
-            ],
-        ]
-    )
-
-
-def settings_menu(current_tz: str | None) -> InlineKeyboardMarkup:
-    tz_label = {
-        "Europe/Moscow": "Москва",
-        "Asia/Bishkek": "Бишкек",
-    }.get(current_tz or "", "не выбрана")
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text=f"Текущая таймзона: {tz_label}", callback_data="noop"),
-                InlineKeyboardButton(text="🇷🇺 Москва", callback_data="tz_moscow"),
-                InlineKeyboardButton(text="🇰🇬 Бишкек", callback_data="tz_bishkek")
-            ],
-            [
-                InlineKeyboardButton(text="❓ Помощь", callback_data="settings_help")
-            ],
-            [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")],
-        ]
-    )
 
 
 
@@ -141,10 +172,10 @@ def finance_menu() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(text="💰 Доходы", callback_data="finance_income"),
-                InlineKeyboardButton(text="💸 Кредиторы", callback_data="finance_creditors")
+                InlineKeyboardButton(text="💸 Кредиторы (я должен)", callback_data="finance_creditors")
             ],
             [
-                InlineKeyboardButton(text="🏦 Должники", callback_data="finance_debtors"),
+                InlineKeyboardButton(text="🏦 Должники (мне должны)", callback_data="finance_debtors"),
                 InlineKeyboardButton(text="🎯 Финансовые цели", callback_data="finance_goals")
             ],
             [
@@ -391,11 +422,17 @@ def todo_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="📋 Список задач", callback_data="todo_list")
             ],
             [
-                InlineKeyboardButton(text="🔄 Ежедневные дела", callback_data="todo_daily"),
-                InlineKeyboardButton(text="✏️ Изменить задачу", callback_data="todo_edit")
+                InlineKeyboardButton(text="✅ Выполненные задачи", callback_data="todo_completed")
             ],
             [
-                InlineKeyboardButton(text="🗑️ Удалить задачу", callback_data="todo_delete"),
+                InlineKeyboardButton(text="🔄 Ежедневные дела", callback_data="todo_daily"),
+                InlineKeyboardButton(text="🎯 Задачи на основе целей", callback_data="todo_goal_based")
+            ],
+            [
+                InlineKeyboardButton(text="✏️ Изменить задачу", callback_data="todo_edit"),
+                InlineKeyboardButton(text="🗑️ Удалить задачу", callback_data="todo_delete")
+            ],
+            [
                 InlineKeyboardButton(text="✅ Отметить выполненной", callback_data="todo_complete")
             ],
             [

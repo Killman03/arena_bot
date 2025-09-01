@@ -51,20 +51,6 @@ class HealthReminder(Base):
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
-class GoogleFitToken(Base):
-    """Google OAuth tokens for users (Google Fit or Google Drive)."""
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), index=True, unique=True)
-    integration_type: Mapped[str] = mapped_column(String(32), default="google_fit")  # google_fit or google_drive
-    access_token: Mapped[str] = mapped_column(Text)
-    refresh_token: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    token_uri: Mapped[str] = mapped_column(String(256))
-    client_id: Mapped[str] = mapped_column(String(256))
-    client_secret: Mapped[str] = mapped_column(String(256))
-    scopes: Mapped[str] = mapped_column(Text)
-    expires_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
 
 

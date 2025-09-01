@@ -9,7 +9,7 @@ from app.config import settings
 async def deepseek_complete(prompt: str, system: Optional[str] = None, max_tokens: int = 512) -> str:
     """Call DeepSeek completion endpoint to generate helpful text."""
     headers = {
-        "Authorization": f"Bearer {settings.deepseek_api_key}",
+        "Authorization": f"Bearer {settings.DEEPSEEK_API_KEY}",
         "Content-Type": "application/json",
     }
     payload = {

@@ -6,7 +6,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from datetime import datetime, date
 from sqlalchemy import select, func
 from app.db.session import session_scope
-from app.db.models import User, Goal, GoalStatus, Challenge, Todo
+from app.db.models import User, Goal, GoalStatus, Todo
 from app.services.gladiator_punishments import generate_gladiator_punishment
 
 router = Router()
@@ -21,6 +21,8 @@ async def arena_punishment_command(message: types.Message) -> None:
 @router.callback_query(F.data == "arena_punishment")
 async def arena_punishment_callback(cb: types.CallbackQuery) -> None:
     """Обработчик кнопки "Арена жизни" в главном меню"""
+    # Сразу отвечаем на callback query, чтобы избежать ошибки "query is too old"
+    await cb.answer()
     await check_arena_punishment(cb.message, cb.from_user)
 
 
@@ -32,7 +34,7 @@ async def check_arena_punishment(message_or_cb, user=None) -> None:
     if not user:
         return
     
-        # Показываем сообщение о том, что проверяем арену
+    # Показываем сообщение о том, что проверяем арену
     if hasattr(message_or_cb, 'edit_text'):
         # Это callback query
         status_message = message_or_cb
@@ -58,7 +60,6 @@ async def check_arena_punishment(message_or_cb, user=None) -> None:
             today = date.today()
             overdue_items = {
                 'goals': [],
-                'challenges': [],
                 'todos': []
             }
             
@@ -80,23 +81,7 @@ async def check_arena_punishment(message_or_cb, user=None) -> None:
                     'days_overdue': days_overdue
                 })
             
-            # Проверяем просроченные челленджи
-            overdue_challenges = (await session.execute(
-                select(Challenge).where(
-                    Challenge.user_id == db_user.id,
-                    Challenge.is_active == True,
-                    Challenge.end_date.is_not(None),
-                    Challenge.end_date < today
-                )
-            )).scalars().all()
-            
-            for challenge in overdue_challenges:
-                days_overdue = (today - challenge.end_date).days
-                overdue_items['challenges'].append({
-                    'title': challenge.title,
-                    'end_date': challenge.end_date,
-                    'days_overdue': days_overdue
-                })
+
             
             # Проверяем просроченные задачи
             overdue_todos = (await session.execute(
@@ -117,7 +102,6 @@ async def check_arena_punishment(message_or_cb, user=None) -> None:
             
             total_overdue = (
                 len(overdue_items['goals']) + 
-                len(overdue_items['challenges']) + 
                 len(overdue_items['todos'])
             )
             
@@ -132,19 +116,28 @@ async def check_arena_punishment(message_or_cb, user=None) -> None:
                 return
             
             # Обновляем статус
-            await status_message.edit_text(
-                f"⚔️ <b>АРЕНА ОБНАРУЖИЛА ПРОСРОЧКИ!</b>\n\n"
-                f"🎯 Просроченных целей: {len(overdue_items['goals'])}\n"
-                f"🏆 Просроченных челленджей: {len(overdue_items['challenges'])}\n"
-                f"📝 Просроченных задач: {len(overdue_items['todos'])}\n\n"
-                f"🔍 Генерирую наказание...",
-                parse_mode="HTML"
-            )
+            if hasattr(status_message, 'edit_text'):
+                await status_message.edit_text(
+                    f"⚔️ <b>АРЕНА ОБНАРУЖИЛА ПРОСРОЧКИ!</b>\n\n"
+                    f"🎯 Просроченных целей: {len(overdue_items['goals'])}\n"
+                    f"📝 Просроченных задач: {len(overdue_items['todos'])}\n\n"
+                    f"🔍 Генерирую наказание...",
+                    parse_mode="HTML"
+                )
+            else:
+                # Для обычных сообщений отправляем новое
+                await message_or_cb.answer(
+                    f"⚔️ <b>АРЕНА ОБНАРУЖИЛА ПРОСРОЧКИ!</b>\n\n"
+                    f"🎯 Просроченных целей: {len(overdue_items['goals'])}\n"
+                    f"📝 Просроченных задач: {len(overdue_items['todos'])}\n\n"
+                    f"🔍 Генерирую наказание...",
+                    parse_mode="HTML"
+                )
             
             # Генерируем наказание
             punishment = await generate_gladiator_punishment(
                 overdue_goals=overdue_items['goals'],
-                overdue_challenges=overdue_items['challenges'],
+    
                 overdue_todos=overdue_items['todos']
             )
             
@@ -169,19 +162,36 @@ async def check_arena_punishment(message_or_cb, user=None) -> None:
             ])
             
             # Отправляем наказание
-            await status_message.edit_text(
-                f"⚔️ <b>ПРИГОВОР АРЕНЫ ВЫНЕСЕН!</b>\n\n{punishment}",
-                reply_markup=keyboard,
-                parse_mode="HTML"
-            )
+            if hasattr(status_message, 'edit_text'):
+                await status_message.edit_text(
+                    f"⚔️ <b>ПРИГОВОР АРЕНЫ ВЫНЕСЕН!</b>\n\n{punishment}",
+                    reply_markup=keyboard,
+                    parse_mode="HTML"
+                )
+            else:
+                # Для обычных сообщений отправляем новое
+                await message_or_cb.answer(
+                    f"⚔️ <b>ПРИГОВОР АРЕНЫ ВЫНЕСЕН!</b>\n\n{punishment}",
+                    reply_markup=keyboard,
+                    parse_mode="HTML"
+                )
             
     except Exception as e:
-        await status_message.edit_text(
-            "❌ <b>Ошибка проверки арены</b>\n\n"
-            "Не удалось проверить просроченные дела.\n"
-            "Попробуйте позже.",
-            parse_mode="HTML"
-        )
+        if hasattr(status_message, 'edit_text'):
+            await status_message.edit_text(
+                "❌ <b>Ошибка проверки арены</b>\n\n"
+                "Не удалось проверить просроченные дела.\n"
+                "Попробуйте позже.",
+                parse_mode="HTML"
+            )
+        else:
+            # Для обычных сообщений отправляем новое
+            await message_or_cb.answer(
+                "❌ <b>Ошибка проверки арены</b>\n\n"
+                "Не удалось проверить просроченные дела.\n"
+                "Попробуйте позже.",
+                parse_mode="HTML"
+            )
 
 
 @router.callback_query(F.data == "accept_punishment")
@@ -207,7 +217,7 @@ async def fix_overdue_items(cb: types.CallbackQuery) -> None:
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(text="🎯 Цели", callback_data="fix_goals"),
-                InlineKeyboardButton(text="🏆 Челленджи", callback_data="fix_challenges")
+
             ],
             [
                 InlineKeyboardButton(text="📝 Задачи", callback_data="fix_todos"),
@@ -244,13 +254,7 @@ async def overdue_analysis(cb: types.CallbackQuery) -> None:
                 )
             )).scalar()
             
-            overdue_challenges_count = (await session.execute(
-                select(func.count(Challenge.id)).where(
-                    Challenge.user_id == db_user.id,
-                    Challenge.is_active == True,
-                    Challenge.end_date < today
-                )
-            )).scalar()
+
             
             overdue_todos_count = (await session.execute(
                 select(func.count(Todo.id)).where(
@@ -260,7 +264,7 @@ async def overdue_analysis(cb: types.CallbackQuery) -> None:
                 )
             )).scalar()
             
-            total_overdue = overdue_goals_count + overdue_challenges_count + overdue_todos_count
+            total_overdue = overdue_goals_count + overdue_todos_count
             
             if total_overdue == 0:
                 await cb.message.edit_text(
@@ -280,12 +284,7 @@ async def overdue_analysis(cb: types.CallbackQuery) -> None:
                 )
             )).scalar()
             
-            total_items += (await session.execute(
-                select(func.count(Challenge.id)).where(
-                    Challenge.user_id == db_user.id,
-                    Challenge.is_active == True
-                )
-            )).scalar()
+
             
             total_items += (await session.execute(
                 select(func.count(Todo.id)).where(
@@ -299,7 +298,7 @@ async def overdue_analysis(cb: types.CallbackQuery) -> None:
             analysis_text = (
                 f"📊 <b>ДЕТАЛЬНЫЙ АНАЛИЗ АРЕНЫ</b>\n\n"
                 f"🎯 <b>Цели:</b> {overdue_goals_count} просрочено\n"
-                f"🏆 <b>Челленджи:</b> {overdue_challenges_count} просрочено\n"
+
                 f"📝 <b>Задачи:</b> {overdue_todos_count} просрочено\n\n"
                 f"📈 <b>Общая статистика:</b>\n"
                 f"• Всего активных дел: {total_items}\n"

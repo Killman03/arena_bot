@@ -13,6 +13,7 @@ from app.db.session import session_scope
 from app.keyboards.common import back_main_menu
 from app.services.llm import deepseek_complete
 from app.handlers.nutrition_budget import get_user_food_budget
+from app.utils.timezone_utils import get_user_time_info
 
 router = Router()
 
@@ -48,8 +49,6 @@ class NutritionTimeFSM(StatesGroup):
     waiting_cook_time = State()
     waiting_remind_time = State()
     waiting_shop_time = State()
-    waiting_calories = State()
-    waiting_goal = State()
 
 
 @router.callback_query(F.data == "nutrition_cooking_now")
@@ -84,12 +83,13 @@ async def nutrition_cooking_now(cb: types.CallbackQuery) -> None:
         
         # Генерируем план питания
         try:
-            plan_text = await _generate_cooking_plan(budget_info)
+            from app.services.nutrition_plan_generator import generate_cooking_plan, generate_fallback_plan
+            plan_text = await generate_cooking_plan(budget_info)
             if not plan_text or len(plan_text.strip()) < 10:
-                plan_text = _generate_fallback_plan(budget_info, "Пустой ответ от ИИ")
+                plan_text = generate_fallback_plan(budget_info, "Пустой ответ от ИИ")
         except Exception as e:
-            print(f"DEBUG: Ошибка в _generate_cooking_plan: {e}")
-            plan_text = _generate_fallback_plan(budget_info, str(e))
+            print(f"DEBUG: Ошибка в generate_cooking_plan: {e}")
+            plan_text = generate_fallback_plan(budget_info, str(e))
         
         # Сохраняем в базу
         session.add(CookingSession(user_id=db_user.id, cooking_date=date.today(), instructions=plan_text))
@@ -207,23 +207,6 @@ async def set_remind_time(message: types.Message, state: FSMContext) -> None:
 @router.message(NutritionTimeFSM.waiting_shop_time)
 async def set_shop_time(message: types.Message, state: FSMContext) -> None:
     await state.update_data(shop_time=message.text)
-    await state.set_state(NutritionTimeFSM.waiting_calories)
-    await message.answer("Укажите целевые калории в день (число) или '-' чтобы пропустить:")
-
-
-@router.message(NutritionTimeFSM.waiting_calories)
-async def set_calories(message: types.Message, state: FSMContext) -> None:
-    calories_text = (message.text or "").strip()
-    calories = int(calories_text) if calories_text.isdigit() else None
-    await state.update_data(calories=calories)
-    await state.set_state(NutritionTimeFSM.waiting_goal)
-    await message.answer("Цель: cut/bulk/maintain или '-' чтобы пропустить:")
-
-
-@router.message(NutritionTimeFSM.waiting_goal)
-async def set_goal(message: types.Message, state: FSMContext) -> None:
-    goal_text = (message.text or "").strip().lower()
-    goal = goal_text if goal_text in {"cut", "bulk", "maintain"} else None
     data = await state.get_data()
     user = message.from_user
     if not user:
@@ -236,14 +219,28 @@ async def set_goal(message: types.Message, state: FSMContext) -> None:
         if not reminder:
             reminder = NutritionReminder(user_id=db_user.id)
             session.add(reminder)
+        
+        # Логируем локальное время пользователя при создании напоминания
+        time_info = get_user_time_info(db_user.timezone)
+        print(f"🕐 Создание напоминания о питании пользователем {db_user.telegram_id}")
+        print(f"   📍 Часовой пояс: {time_info['timezone']}")
+        print(f"   🕐 Локальное время пользователя: {time_info['user_local_time'].strftime('%H:%M:%S')}")
+        print(f"   🌍 UTC время: {time_info['utc_time'].strftime('%H:%M:%S')}")
+        print(f"   ⏰ Время готовки: {data['cook_time']}")
+        print(f"   ⏰ Время напоминания: {data['remind_time']}")
+        print(f"   🛒 Время покупок: {data['shop_time']}")
+        print(f"   📊 Смещение: {time_info['offset_hours']:+g} ч")
+        
         reminder.cooking_days = data["days"]
         reminder.cooking_time = data["cook_time"]
         reminder.reminder_time = data["remind_time"]
         reminder.shopping_reminder_time = data["shop_time"]
-        reminder.target_calories = data.get("calories")
-        reminder.body_goal = goal
+        # Не изменяем target_calories и body_goal - они настраиваются отдельно
     await state.clear()
-    await message.answer("Настройки напоминаний сохранены ✅", reply_markup=back_main_menu())
+    await message.answer("Настройки времени напоминаний сохранены ✅", reply_markup=back_main_menu())
+
+
+
 
 
 @router.callback_query(F.data == "nutrition_history")
@@ -680,6 +677,74 @@ def _convert_markdown_to_html(text: str) -> str:
     print(f"DEBUG: После HTML конвертации длина текста: {len(text)} символов")
     
     return text
+
+
+@router.message(Command("test_nutrition_settings"))
+async def test_nutrition_settings(message: types.Message) -> None:
+    """Тестирует настройки питания и показывает текущие дни."""
+    user = message.from_user
+    if not user:
+        return
+    
+    try:
+        async with session_scope() as session:
+            db_user = (await session.execute(select(User).where(User.telegram_id == user.id))).scalar_one()
+            
+            # Получаем настройки питания
+            reminder = (await session.execute(
+                select(NutritionReminder).where(NutritionReminder.user_id == db_user.id)
+            )).scalar_one_or_none()
+            
+            if not reminder:
+                await message.answer("❌ Настройки питания не найдены. Сначала настройте напоминания о питании.")
+                return
+            
+            # Получаем информацию о времени пользователя
+            from app.utils.timezone_utils import get_user_time_info
+            time_info = get_user_time_info(db_user.timezone)
+            
+            # Парсируем дни
+            days = [d.strip().lower() for d in (reminder.cooking_days or "").split(",") if d.strip()]
+            weekday_names = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+            current_day_name = weekday_names[time_info['user_local_time'].weekday()]
+            
+            # Проверяем, является ли сегодня днем готовки
+            from app.services.nutrition_reminders import _weekday_str_to_int
+            is_cooking_day = time_info['user_local_time'].weekday() in [
+                _weekday_str_to_int(d) for d in days if d in {"sunday", "wednesday", "monday", "tuesday", "thursday", "friday", "saturday"}
+            ]
+            
+            # Проверяем, является ли завтра днем готовки (для покупок)
+            tomorrow_weekday = (time_info['user_local_time'].weekday() + 1) % 7
+            tomorrow_day_name = weekday_names[tomorrow_weekday]
+            is_shopping_day = tomorrow_weekday in [
+                _weekday_str_to_int(d) for d in days if d in {"sunday", "wednesday", "monday", "tuesday", "thursday", "friday", "saturday"}
+            ]
+            
+            status_text = f"""📊 <b>Настройки питания</b>
+
+👤 <b>Пользователь:</b> {db_user.telegram_id}
+📍 <b>Часовой пояс:</b> {time_info['timezone']}
+🕐 <b>Локальное время:</b> {time_info['user_local_time'].strftime('%d.%m.%Y %H:%M')}
+
+📅 <b>Дни готовки:</b> {reminder.cooking_days or 'Не настроено'}
+⏰ <b>Время готовки:</b> {reminder.cooking_time or 'Не настроено'}
+⏰ <b>Время напоминания:</b> {reminder.reminder_time or 'Не настроено'}
+🛒 <b>Время покупок:</b> {reminder.shopping_reminder_time or 'Не настроено'}
+🎯 <b>Цель:</b> {reminder.body_goal or 'Не настроено'}
+🔥 <b>Калории:</b> {reminder.target_calories or 'Не настроено'}
+
+📊 <b>Статус сегодня:</b>
+• Сегодня ({current_day_name}): {'✅ День готовки' if is_cooking_day else '❌ Не день готовки'}
+• Завтра ({tomorrow_day_name}): {'✅ День готовки (сегодня покупки)' if is_shopping_day else '❌ Не день готовки'}
+
+🔧 <b>Парсированные дни:</b> {days}
+🔧 <b>Номера дней недели:</b> {[_weekday_str_to_int(d) for d in days if d in {'sunday', 'wednesday', 'monday', 'tuesday', 'thursday', 'friday', 'saturday'}]}"""
+            
+            await message.answer(status_text, parse_mode="HTML")
+            
+    except Exception as e:
+        await message.answer(f"❌ Ошибка получения настроек питания: {str(e)}")
 
 
 

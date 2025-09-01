@@ -8,6 +8,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy import select, and_, or_
 from sqlalchemy.orm import selectinload
+from aiogram.filters import Command
 
 from app.db.models import Todo, User
 from app.db.session import session_scope
@@ -16,6 +17,7 @@ from app.keyboards.common import (
     todo_list_keyboard, todo_view_keyboard, todo_daily_reminder_keyboard,
     todo_type_menu, back_main_menu
 )
+from app.services.todo_reminders import send_test_todo_reminder
 
 router = Router()
 
@@ -25,10 +27,12 @@ class TodoStates(StatesGroup):
     waiting_description = State()
     waiting_date = State()
     waiting_priority = State()
+    waiting_reminder = State()
     edit_title = State()
     edit_description = State()
     edit_date = State()
     edit_priority = State()
+    edit_reminder = State()
 
 
 @router.callback_query(F.data == "menu_todo")
@@ -105,7 +109,8 @@ async def todo_title_handler(message: types.Message, state: FSMContext) -> None:
         # Для разовых задач продолжаем обычный процесс
         await state.set_state(TodoStates.waiting_description)
         await message.answer(
-            "📝 Введите описание задачи (или отправьте '-' чтобы пропустить):"
+            "📝 Введите описание задачи (или отправьте '-' чтобы пропустить):",
+            reply_markup=back_main_menu()
         )
 
 
@@ -116,8 +121,9 @@ async def todo_description_handler(message: types.Message, state: FSMContext) ->
     await state.update_data(description=description)
     await state.set_state(TodoStates.waiting_date)
     await message.answer(
-        "📅 Введите дату выполнения в формате ДД.ММ.ГГГГ\n"
-        "Или отправьте 'сегодня', 'завтра', 'через неделю':"
+        "📅 Введите дату выполнения в формате ДД.ММ.ГГГГ или ДД.ММ.ГГ\n"
+        "Или отправьте 'сегодня', 'завтра', 'через неделю':",
+        reply_markup=back_main_menu()
     )
 
 
@@ -135,10 +141,15 @@ async def todo_date_handler(message: types.Message, state: FSMContext) -> None:
         due_date = date.today() + timedelta(days=7)
     else:
         try:
+            # Пробуем сначала полный формат (4 цифры года)
             due_date = datetime.strptime(date_text, "%d.%m.%Y").date()
         except ValueError:
-            await message.answer("❌ Неверный формат даты. Используйте ДД.ММ.ГГГГ")
-            return
+            try:
+                # Пробуем короткий формат (2 цифры года)
+                due_date = datetime.strptime(date_text, "%d.%m.%y").date()
+            except ValueError:
+                await message.answer("❌ Неверный формат даты. Используйте ДД.ММ.ГГГГ или ДД.ММ.ГГ", reply_markup=back_main_menu())
+                return
     
     await state.update_data(due_date=due_date)
     await state.set_state(TodoStates.waiting_priority)
@@ -191,7 +202,7 @@ async def todo_priority_handler(cb: types.CallbackQuery, state: FSMContext) -> N
             await cb.message.edit_text(
                 f"📝 <b>Задача обновлена:</b>\n\n"
                 f"<b>Название:</b> {todo_obj.title}\n"
-                f"<b>Описание:</b> {todo_obj.description or 'Не указано'}\n"
+                f"<b>Описание:</b> {(todo_obj.description or 'Не указано').replace('<', '&lt;').replace('>', '&gt;').replace('&', '&amp;')}\n"
                 f"<b>Дата:</b> {todo_obj.due_date.strftime('%d.%m.%Y')}\n"
                 f"<b>Приоритет:</b> {priority}\n"
                 f"<b>Ежедневная:</b> {'Да' if todo_obj.is_daily else 'Нет'}",
@@ -202,61 +213,156 @@ async def todo_priority_handler(cb: types.CallbackQuery, state: FSMContext) -> N
         # Создаем новую задачу
         await state.update_data(priority=priority)
         
-        async with session_scope() as session:
-            user = await session.execute(
-                select(User).where(User.telegram_id == cb.from_user.id)
-            )
-            db_user = user.scalar_one()
-            
-            # Для ежедневных задач используем сегодняшнюю дату, для разовых - указанную пользователем
-            due_date = date.today() if data.get("is_daily", False) else data["due_date"]
-            description = data.get("description") if not data.get("is_daily", False) else None
-            
-            todo = Todo(
-                user_id=db_user.id,
-                title=data["title"],
-                description=description,
-                due_date=due_date,
-                priority=priority,
-                is_daily=data.get("is_daily", False)
-            )
-            session.add(todo)
-            await session.commit()
-        
-        # Формируем сообщение о созданной задаче
-        priority_icons = {"high": "🔴", "medium": "🟡", "low": "🟢"}
-        priority_text = {"high": "Высокий", "medium": "Средний", "low": "Низкий"}
-        task_type = "🔄 Ежедневная" if data.get("is_daily", False) else "📅 Разовая"
-        
-        # Формируем сообщение в зависимости от типа задачи
-        if data.get("is_daily", False):
-            message_text = (
-                f"✅ <b>Ежедневная задача создана!</b>\n\n"
-                f"📝 <b>Название:</b> {data['title']}\n"
-                f"🔴 <b>Приоритет:</b> {priority_icons[priority]} {priority_text[priority]}\n"
-                f"🔄 <b>Тип:</b> {task_type}\n"
-                f"📅 <b>Показывается каждый день</b>"
-            )
-        else:
-            message_text = (
-                f"✅ <b>Задача создана!</b>\n\n"
-                f"📝 <b>Название:</b> {data['title']}\n"
-                f"📅 <b>Дата:</b> {data['due_date'].strftime('%d.%m.%Y')}\n"
-                f"🔴 <b>Приоритет:</b> {priority_icons[priority]} {priority_text[priority]}\n"
-                f"🔄 <b>Тип:</b> {task_type}"
-            )
-            
-            if data["description"]:
-                message_text += f"\n📄 <b>Описание:</b> {data['description']}"
-        
+        # Переходим к выбору времени напоминания
+        await state.set_state(TodoStates.waiting_reminder)
         await cb.message.edit_text(
+            "⏰ <b>Настройка напоминаний</b>\n\n"
+            "Хотите ли вы получать напоминания о задаче?\n\n"
+            "• <b>Да</b> - получать напоминания в указанное время\n"
+            "• <b>Нет</b> - без напоминаний\n\n"
+            "Выберите вариант:",
+            reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+                [types.InlineKeyboardButton(text="✅ Да", callback_data="todo_reminder_yes")],
+                [types.InlineKeyboardButton(text="❌ Нет", callback_data="todo_reminder_no")],
+                [types.InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_todo")]
+            ]),
+            parse_mode="HTML"
+        )
+
+
+@router.callback_query(F.data == "todo_reminder_yes")
+async def todo_reminder_yes_handler(cb: types.CallbackQuery, state: FSMContext) -> None:
+    """Пользователь выбрал получать напоминания"""
+    await state.update_data(wants_reminder=True)
+    await cb.message.edit_text(
+        "⏰ <b>Время напоминания</b>\n\n"
+        "Введите время для напоминания в формате ЧЧ:ММ\n\n"
+        "Примеры:\n"
+        "• 09:00 - утром\n"
+        "• 18:00 - вечером\n"
+        "• 21:00 - перед сном\n\n"
+        "Или отправьте 'нет' чтобы пропустить:",
+        reply_markup=back_main_menu(),
+        parse_mode="HTML"
+    )
+    await cb.answer()
+
+
+@router.callback_query(F.data == "todo_reminder_no")
+async def todo_reminder_no_handler(cb: types.CallbackQuery, state: FSMContext) -> None:
+    """Пользователь выбрал не получать напоминания"""
+    await state.update_data(wants_reminder=False, reminder_time=None)
+    await create_todo_from_state(cb, state)
+
+
+@router.message(TodoStates.waiting_reminder)
+async def todo_reminder_time_handler(message: types.Message, state: FSMContext) -> None:
+    """Обработка времени напоминания"""
+    if message.text.lower() == "нет":
+        await state.update_data(wants_reminder=False, reminder_time=None)
+    else:
+        # Проверяем формат времени
+        try:
+            time_str = message.text.strip()
+            if ":" not in time_str:
+                await message.answer("❌ Неверный формат времени. Используйте ЧЧ:ММ (например: 09:00)", reply_markup=back_main_menu())
+                return
+            
+            hour, minute = map(int, time_str.split(":"))
+            if not (0 <= hour <= 23 and 0 <= minute <= 59):
+                raise ValueError("Invalid time")
+            
+            await state.update_data(wants_reminder=True, reminder_time=time_str)
+        except ValueError:
+            await message.answer("❌ Неверный формат времени. Используйте ЧЧ:ММ (например: 09:00)", reply_markup=back_main_menu())
+            return
+    
+    # Создаем задачу
+    await create_todo_from_state(message, state)
+
+
+async def create_todo_from_state(message_or_cb, state: FSMContext) -> None:
+    """Создает задачу из данных состояния"""
+    data = await state.get_data()
+    
+    async with session_scope() as session:
+        user = await session.execute(
+            select(User).where(User.telegram_id == message_or_cb.from_user.id)
+        )
+        db_user = user.scalar_one()
+        
+        # Для ежедневных задач используем сегодняшнюю дату, для разовых - указанную пользователем
+        due_date = date.today() if data.get("is_daily", False) else data["due_date"]
+        description = data.get("description") if not data.get("is_daily", False) else None
+        
+        # Настройки напоминания
+        reminder_time = data.get("reminder_time") if data.get("wants_reminder", False) else None
+        is_reminder_active = bool(reminder_time)
+        
+        todo = Todo(
+            user_id=db_user.id,
+            title=data["title"],
+            description=description,
+            due_date=due_date,
+            priority=data["priority"],
+            is_daily=data.get("is_daily", False),
+            reminder_time=reminder_time,
+            is_reminder_active=is_reminder_active
+        )
+        session.add(todo)
+        await session.commit()
+    
+    # Формируем сообщение о созданной задаче
+    priority_icons = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+    priority_text = {"high": "Высокий", "medium": "Средний", "low": "Низкий"}
+    task_type = "🔄 Ежедневная" if data.get("is_daily", False) else "📅 Разовая"
+    
+    # Формируем сообщение в зависимости от типа задачи
+    if data.get("is_daily", False):
+        message_text = (
+            f"✅ <b>Ежедневная задача создана!</b>\n\n"
+            f"📝 <b>Название:</b> {data['title']}\n"
+            f"🔴 <b>Приоритет:</b> {priority_icons[data['priority']]} {priority_text[data['priority']]}\n"
+            f"🔄 <b>Тип:</b> {task_type}\n"
+            f"📅 <b>Показывается каждый день</b>"
+        )
+        
+        if data.get("wants_reminder") and data.get("reminder_time"):
+            message_text += f"\n⏰ <b>Напоминания:</b> каждый день в {data['reminder_time']}"
+        else:
+            message_text += "\n⏰ <b>Напоминания:</b> отключены"
+    else:
+        message_text = (
+            f"✅ <b>Разовая задача создана!</b>\n\n"
+            f"📝 <b>Название:</b> {data['title']}\n"
+            f"📄 <b>Описание:</b> {data.get('description') or 'Не указано'}\n"
+            f"📅 <b>Дата:</b> {data['due_date'].strftime('%d.%m.%Y')}\n"
+            f"🔴 <b>Приоритет:</b> {priority_icons[data['priority']]} {priority_text[data['priority']]}\n"
+            f"📅 <b>Тип:</b> {task_type}"
+        )
+        
+        if data.get("wants_reminder") and data.get("reminder_time"):
+            message_text += f"\n⏰ <b>Напоминания:</b> {data['due_date'].strftime('%d.%m.%Y')} в {data['reminder_time']}"
+        else:
+            message_text += "\n⏰ <b>Напоминания:</b> отключены"
+    
+    # Отправляем сообщение
+    if hasattr(message_or_cb, 'message'):
+        # Это callback query
+        await message_or_cb.message.edit_text(
             message_text,
             reply_markup=todo_menu(),
             parse_mode="HTML"
         )
-        await state.clear()
+    else:
+        # Это message
+        await message_or_cb.answer(
+            message_text,
+            reply_markup=todo_menu(),
+            parse_mode="HTML"
+        )
     
-    await cb.answer()
+    await state.clear()
 
 
 @router.callback_query(F.data == "todo_list")
@@ -268,9 +374,14 @@ async def todo_list_handler(cb: types.CallbackQuery) -> None:
         )
         db_user = user.scalar_one()
         
-        # Получаем все задачи пользователя
+        # Получаем все НЕ выполненные задачи пользователя
         todos = await session.execute(
-            select(Todo).where(Todo.user_id == db_user.id).order_by(Todo.due_date, Todo.priority)
+            select(Todo).where(
+                and_(
+                    Todo.user_id == db_user.id,
+                    Todo.is_completed == False
+                )
+            ).order_by(Todo.due_date, Todo.priority)
         )
         todos_list = todos.scalars().all()
     
@@ -298,11 +409,84 @@ async def todo_list_handler(cb: types.CallbackQuery) -> None:
         
         priority_icons = {"high": "🔴", "medium": "🟡", "low": "🟢"}
         status_icon = "✅" if todo.is_completed else "⭕"
-        message_text += f"{status_icon} {priority_icons[todo.priority]} {todo.title}\n"
+        # Экранируем HTML-символы в названии задачи
+        safe_title = todo.title.replace("<", "&lt;").replace(">", "&gt;").replace("&", "&amp;")
+        
+        # Добавляем информацию о напоминаниях
+        reminder_info = ""
+        if todo.is_reminder_active and todo.reminder_time:
+            reminder_info = f" ⏰{todo.reminder_time}"
+        
+        message_text += f"{status_icon} {priority_icons[todo.priority]} {safe_title}{reminder_info}\n"
     
     # Создаем клавиатуру для списка
     todos_data = [(todo.id, todo.title, todo.is_completed) for todo in todos_list]
     keyboard = todo_list_keyboard(todos_data)
+    
+    await cb.message.edit_text(
+        message_text,
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await cb.answer()
+
+
+@router.callback_query(F.data == "todo_completed")
+async def todo_completed_handler(cb: types.CallbackQuery) -> None:
+    """Показать список выполненных задач пользователя"""
+    async with session_scope() as session:
+        user = await session.execute(
+            select(User).where(User.telegram_id == cb.from_user.id)
+        )
+        db_user = user.scalar_one()
+        
+        # Получаем все выполненные задачи пользователя
+        completed_todos = await session.execute(
+            select(Todo).where(
+                and_(
+                    Todo.user_id == db_user.id,
+                    Todo.is_completed == True
+                )
+            ).order_by(Todo.due_date.desc(), Todo.priority)
+        )
+        completed_list = completed_todos.scalars().all()
+    
+    if not completed_list:
+        await cb.message.edit_text(
+            "✅ <b>Выполненные задачи</b>\n\n"
+            "У вас пока нет выполненных задач.",
+            reply_markup=todo_menu(),
+            parse_mode="HTML"
+        )
+        await cb.answer()
+        return
+    
+    # Формируем список выполненных задач
+    message_text = "✅ <b>Ваши выполненные задачи:</b>\n\n"
+    
+    current_date = None
+    for todo in completed_list:
+        if todo.due_date != current_date:
+            current_date = todo.due_date
+            date_str = "Сегодня" if todo.due_date == date.today() else \
+                      "Вчера" if todo.due_date == date.today() - timedelta(days=1) else \
+                      todo.due_date.strftime("%d.%m.%Y")
+            message_text += f"\n📅 <b>{date_str}:</b>\n"
+        
+        priority_icons = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+        # Экранируем HTML-символы в названии задачи
+        safe_title = todo.title.replace("<", "&lt;").replace(">", "&gt;").replace("&", "&amp;")
+        
+        # Добавляем информацию о напоминаниях
+        reminder_info = ""
+        if todo.is_reminder_active and todo.reminder_time:
+            reminder_info = f" ⏰{todo.reminder_time}"
+        
+        message_text += f"✅ {priority_icons[todo.priority]} {safe_title}{reminder_info}\n"
+    
+    # Создаем клавиатуру для списка выполненных задач
+    completed_data = [(todo.id, todo.title, True) for todo in completed_list]
+    keyboard = todo_list_keyboard(completed_data)
     
     await cb.message.edit_text(
         message_text,
@@ -353,8 +537,19 @@ async def todo_view_handler(cb: types.CallbackQuery) -> None:
             f"⏰ <b>Создано:</b> {todo_obj.created_at.strftime('%d.%m.%Y %H:%M')}"
         )
         
+        # Добавляем информацию о напоминаниях
+        if todo_obj.is_reminder_active and todo_obj.reminder_time:
+            if todo_obj.is_daily:
+                message_text += f"\n🔔 <b>Напоминания:</b> каждый день в {todo_obj.reminder_time}"
+            else:
+                message_text += f"\n🔔 <b>Напоминания:</b> {todo_obj.due_date.strftime('%d.%m.%Y')} в {todo_obj.reminder_time}"
+        else:
+            message_text += "\n🔔 <b>Напоминания:</b> отключены"
+        
         if todo_obj.description:
-            message_text += f"\n\n📄 <b>Описание:</b>\n{todo_obj.description}"
+            # Экранируем HTML-символы в описании
+            safe_description = todo_obj.description.replace("<", "&lt;").replace(">", "&gt;").replace("&", "&amp;")
+            message_text += f"\n\n📄 <b>Описание:</b>\n{safe_description}"
     
     await cb.message.edit_text(
         message_text,
@@ -395,6 +590,24 @@ async def todo_mark_complete_handler(cb: types.CallbackQuery) -> None:
         
         status_text = "✅ выполнена" if todo_obj.is_completed else "⭕ в процессе"
         await cb.answer(f"Задача {status_text}")
+        
+        # Если задача выполнена, предлагаем удалить её
+        if todo_obj.is_completed:
+            await cb.message.edit_text(
+                f"✅ <b>Задача выполнена!</b>\n\n"
+                f"📝 <b>{todo_obj.title}</b>\n\n"
+                "Хотите удалить выполненную задачу из списка?",
+                reply_markup=types.InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [
+                            types.InlineKeyboardButton(text="🗑️ Да, удалить", callback_data=f"todo_delete:{todo_id}"),
+                            types.InlineKeyboardButton(text="📋 Оставить", callback_data=f"todo_view:{todo_id}")
+                        ]
+                    ]
+                ),
+                parse_mode="HTML"
+            )
+            return
     
     # Обновляем сообщение
     await todo_view_handler(cb)
@@ -607,38 +820,80 @@ async def todo_daily_handler(cb: types.CallbackQuery) -> None:
         )
         db_user = user.scalar_one()
         
-        # Получаем все ежедневные задачи пользователя
-        todos = await session.execute(
+        # Получаем обычные ежедневные задачи (не на основе целей)
+        regular_todos = await session.execute(
             select(Todo).where(
                 and_(
                     Todo.user_id == db_user.id,
-                    Todo.is_daily == True
+                    Todo.is_daily == True,
+                    Todo.description.notlike("Ежедневная задача для достижения цели:%")
                 )
             ).order_by(Todo.priority)
         )
-        todos_list = todos.scalars().all()
+        regular_list = regular_todos.scalars().all()
+        
+        # Получаем задачи на основе целей
+        goal_based_todos = await session.execute(
+            select(Todo).where(
+                and_(
+                    Todo.user_id == db_user.id,
+                    Todo.is_daily == True,
+                    Todo.description.like("Ежедневная задача для достижения цели:%")
+                )
+            ).order_by(Todo.priority)
+        )
+        goal_based_list = goal_based_todos.scalars().all()
+        
+        # Получаем сводки
+        from app.services.daily_tasks_manager import get_separate_daily_tasks_summary
+        summary = await get_separate_daily_tasks_summary(session, db_user.id)
     
-    if not todos_list:
+    if not regular_list and not goal_based_list:
         await cb.message.edit_text(
             "🔄 <b>Ежедневные задачи</b>\n\n"
-            "У вас пока нет ежедневных задач.",
+            "У вас пока нет ежедневных задач.\n\n"
+            "💡 Создайте обычные ежедневные задачи или цели, и система автоматически будет создавать задачи для их достижения!",
             reply_markup=todo_menu(),
             parse_mode="HTML"
         )
         await cb.answer()
         return
     
-    # Формируем список ежедневных задач
+    # Формируем сообщение с отдельными секциями
     message_text = "🔄 <b>Ваши ежедневные задачи:</b>\n\n"
     
-    for todo in todos_list:
-        priority_icons = {"high": "🔴", "medium": "🟡", "low": "🟢"}
-        status_icon = "✅" if todo.is_completed else "⭕"
-        message_text += f"{status_icon} {priority_icons[todo.priority]} {todo.title}\n"
+    # Секция обычных задач
+    if regular_list:
+        message_text += "📋 <b>Обычные задачи:</b>\n"
+        for todo in regular_list:
+            priority_icons = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+            status_icon = "✅" if todo.is_completed else "⭕"
+            message_text += f"{status_icon} {priority_icons[todo.priority]} {todo.title}\n"
+        message_text += "\n"
     
-    # Создаем клавиатуру для списка
-    todos_data = [(todo.id, todo.title, todo.is_completed) for todo in todos_list]
-    keyboard = todo_list_keyboard(todos_data)
+    # Секция задач на основе целей
+    if goal_based_list:
+        message_text += "🎯 <b>Задачи на основе целей:</b>\n"
+        for todo in goal_based_list:
+            priority_icons = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+            status_icon = "✅" if todo.is_completed else "⭕"
+            goal_title = todo.description.replace("Ежедневная задача для достижения цели: ", "") if todo.description else ""
+            message_text += f"{status_icon} {priority_icons[todo.priority]} {todo.title}\n"
+            message_text += f"   📎 Цель: {goal_title}\n"
+        message_text += "\n"
+    
+    # Добавляем статистику
+    message_text += f"📊 <b>Статистика:</b>\n"
+    message_text += f"• Обычные задачи: {summary['regular']['total']} (выполнено: {summary['regular']['completed']})\n"
+    message_text += f"• Задачи на основе целей: {summary['goal_based']['total']} (выполнено: {summary['goal_based']['completed']})\n"
+    message_text += f"• Общий прогресс: {summary['overall']['completion_rate']:.1f}%"
+    
+    # Создаем клавиатуру
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="🎯 Задачи на основе целей", callback_data="todo_goal_based")],
+        [types.InlineKeyboardButton(text="📋 Все задачи", callback_data="todo_list")],
+        [types.InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_todo")]
+    ])
     
     await cb.message.edit_text(
         message_text,
@@ -843,7 +1098,7 @@ async def todo_edit_date_handler(cb: types.CallbackQuery, state: FSMContext) -> 
     await state.update_data(todo_id=todo_id)
     await cb.message.edit_text(
         "📅 <b>Редактирование даты</b>\n\n"
-        "Введите новую дату в формате ДД.ММ.ГГГГ\n"
+        "Введите новую дату в формате ДД.ММ.ГГГГ или ДД.ММ.ГГ\n"
         "Или отправьте 'сегодня', 'завтра', 'через неделю':",
         reply_markup=back_main_menu(),
         parse_mode="HTML"
@@ -898,7 +1153,7 @@ async def todo_toggle_daily_handler(cb: types.CallbackQuery) -> None:
         await cb.message.edit_text(
             "✏️ <b>Редактирование задачи</b>\n\n"
             f"<b>Название:</b> {todo_obj.title}\n"
-            f"<b>Описание:</b> {todo_obj.description or 'Не указано'}\n"
+            f"<b>Описание:</b> {(todo_obj.description or 'Не указано').replace('<', '&lt;').replace('>', '&gt;').replace('&', '&amp;')}\n"
             f"<b>Дата:</b> {todo_obj.due_date.strftime('%d.%m.%Y')}\n"
             f"<b>Приоритет:</b> {todo_obj.priority}\n"
             f"<b>Ежедневная:</b> {'Да' if todo_obj.is_daily else 'Нет'}",
@@ -932,7 +1187,7 @@ async def todo_edit_menu_handler(cb: types.CallbackQuery) -> None:
         await cb.message.edit_text(
             "✏️ <b>Редактирование задачи</b>\n\n"
             f"<b>Название:</b> {todo_obj.title}\n"
-            f"<b>Описание:</b> {todo_obj.description or 'Не указано'}\n"
+            f"<b>Описание:</b> {(todo_obj.description or 'Не указано').replace('<', '&lt;').replace('>', '&gt;').replace('&', '&amp;')}\n"
             f"<b>Дата:</b> {todo_obj.due_date.strftime('%d.%m.%Y')}\n"
             f"<b>Приоритет:</b> {todo_obj.priority}\n"
             f"<b>Ежедневная:</b> {'Да' if todo_obj.is_daily else 'Нет'}",
@@ -941,6 +1196,155 @@ async def todo_edit_menu_handler(cb: types.CallbackQuery) -> None:
         )
     
     await cb.answer()
+
+
+@router.callback_query(F.data == "todo_goal_based")
+async def todo_goal_based_handler(cb: types.CallbackQuery) -> None:
+    """Показать задачи на основе целей"""
+    async with session_scope() as session:
+        user = await session.execute(
+            select(User).where(User.telegram_id == cb.from_user.id)
+        )
+        db_user = user.scalar_one()
+        
+        # Получаем задачи на основе целей
+        goal_based_todos = await session.execute(
+            select(Todo).where(
+                and_(
+                    Todo.user_id == db_user.id,
+                    Todo.is_daily == True,
+                    Todo.description.like("Ежедневная задача для достижения цели:%")
+                )
+            ).order_by(Todo.priority)
+        )
+        goal_based_list = goal_based_todos.scalars().all()
+        
+        # Получаем сводку
+        from app.services.daily_tasks_manager import get_goal_based_tasks_summary
+        summary = await get_goal_based_tasks_summary(session, db_user.id)
+    
+    if not goal_based_list:
+        await cb.message.edit_text(
+            "🎯 <b>Задачи на основе целей</b>\n\n"
+            "У вас пока нет задач на основе целей.\n\n"
+            "💡 Создайте цели в разделе 'Цели', и система автоматически будет создавать ежедневные задачи для их достижения!",
+            reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+                [types.InlineKeyboardButton(text="🎯 Создать цель", callback_data="menu_goals")],
+                [types.InlineKeyboardButton(text="🔄 Создать задачи из целей", callback_data="todo_create_from_goals")],
+                [types.InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_todo")]
+            ]),
+            parse_mode="HTML"
+        )
+        await cb.answer()
+        return
+    
+    # Формируем список задач на основе целей
+    message_text = "🎯 <b>Задачи на основе целей:</b>\n\n"
+    
+    for todo in goal_based_list:
+        priority_icons = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+        status_icon = "✅" if todo.is_completed else "⭕"
+        # Убираем префикс из описания для отображения и экранируем HTML
+        goal_title = todo.description.replace("Ежедневная задача для достижения цели: ", "") if todo.description else ""
+        safe_goal_title = goal_title.replace("<", "&lt;").replace(">", "&gt;").replace("&", "&amp;")
+        message_text += f"{status_icon} {priority_icons[todo.priority]} {todo.title}\n"
+        message_text += f"   📎 Цель: {safe_goal_title}\n\n"
+    
+    # Добавляем статистику
+    message_text += f"📊 <b>Статистика:</b>\n"
+    message_text += f"• Всего задач: {summary['total']}\n"
+    message_text += f"• Выполнено: {summary['completed']}\n"
+    message_text += f"• Осталось: {summary['pending']}\n"
+    message_text += f"• Прогресс: {summary['completion_rate']:.1f}%"
+    
+    # Создаем клавиатуру
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="🔄 Создать новые задачи из целей", callback_data="todo_create_from_goals")],
+        [types.InlineKeyboardButton(text="🗑️ Очистить старые выполненные", callback_data="todo_cleanup_goal_tasks")],
+        [types.InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_todo")]
+    ])
+    
+    await cb.message.edit_text(
+        message_text,
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await cb.answer()
+
+
+@router.callback_query(F.data == "todo_create_from_goals")
+async def todo_create_from_goals_handler(cb: types.CallbackQuery) -> None:
+    """Создать задачи на основе активных целей"""
+    async with session_scope() as session:
+        user = await session.execute(
+            select(User).where(User.telegram_id == cb.from_user.id)
+        )
+        db_user = user.scalar_one()
+        
+        # Создаем задачи на основе целей
+        from app.services.daily_tasks_manager import create_goal_based_tasks
+        created_tasks = await create_goal_based_tasks(session, db_user.id)
+    
+    if not created_tasks:
+        await cb.message.edit_text(
+            "🎯 <b>Создание задач из целей</b>\n\n"
+            "У вас нет активных целей для создания задач.\n\n"
+            "💡 Создайте цели в разделе 'Цели', и система автоматически будет создавать ежедневные задачи для их достижения!",
+            reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+                [types.InlineKeyboardButton(text="🎯 Создать цель", callback_data="menu_goals")],
+                [types.InlineKeyboardButton(text="⬅️ Назад", callback_data="todo_goal_based")]
+            ]),
+            parse_mode="HTML"
+        )
+        await cb.answer()
+        return
+    
+    # Показываем созданные задачи
+    message_text = f"✅ <b>Создано {len(created_tasks)} задач на основе целей:</b>\n\n"
+    
+    for task in created_tasks:
+        priority_icons = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+        goal_title = task.description.replace("Ежедневная задача для достижения цели: ", "") if task.description else ""
+        safe_goal_title = goal_title.replace("<", "&lt;").replace(">", "&gt;").replace("&", "&amp;")
+        message_text += f"⭕ {priority_icons[task.priority]} {task.title}\n"
+        message_text += f"   📎 Цель: {safe_goal_title}\n\n"
+    
+    message_text += "💡 Эти задачи будут появляться каждый день автоматически!"
+    
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="🎯 Посмотреть все задачи на основе целей", callback_data="todo_goal_based")],
+        [types.InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_todo")]
+    ])
+    
+    await cb.message.edit_text(
+        message_text,
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await cb.answer()
+
+
+@router.callback_query(F.data == "todo_cleanup_goal_tasks")
+async def todo_cleanup_goal_tasks_handler(cb: types.CallbackQuery) -> None:
+    """Очистить старые выполненные задачи на основе целей"""
+    async with session_scope() as session:
+        user = await session.execute(
+            select(User).where(User.telegram_id == cb.from_user.id)
+        )
+        db_user = user.scalar_one()
+        
+        # Очищаем старые задачи
+        from app.services.daily_tasks_manager import cleanup_old_goal_tasks
+        deleted_count = await cleanup_old_goal_tasks(session, db_user.id, days_to_keep=7)
+    
+    if deleted_count == 0:
+        await cb.answer("🗑️ Нет старых выполненных задач для удаления")
+        return
+    
+    await cb.answer(f"🗑️ Удалено {deleted_count} старых выполненных задач")
+    
+    # Возвращаемся к списку задач на основе целей
+    await todo_goal_based_handler(cb)
 
 
 # Обработчики для состояний редактирования
@@ -980,7 +1384,7 @@ async def todo_edit_title_message_handler(message: types.Message, state: FSMCont
         await message.answer(
             f"📝 <b>Задача обновлена:</b>\n\n"
             f"<b>Название:</b> {todo_obj.title}\n"
-            f"<b>Описание:</b> {todo_obj.description or 'Не указано'}\n"
+            f"<b>Описание:</b> {(todo_obj.description or 'Не указано').replace('<', '&lt;').replace('>', '&gt;').replace('&', '&amp;')}\n"
             f"<b>Дата:</b> {todo_obj.due_date.strftime('%d.%m.%Y')}\n"
             f"<b>Приоритет:</b> {todo_obj.priority}\n"
             f"<b>Ежедневная:</b> {'Да' if todo_obj.is_daily else 'Нет'}",
@@ -1025,7 +1429,7 @@ async def todo_edit_description_message_handler(message: types.Message, state: F
         await message.answer(
             f"📝 <b>Задача обновлена:</b>\n\n"
             f"<b>Название:</b> {todo_obj.title}\n"
-            f"<b>Описание:</b> {todo_obj.description or 'Не указано'}\n"
+            f"<b>Описание:</b> {(todo_obj.description or 'Не указано').replace('<', '&lt;').replace('>', '&gt;').replace('&', '&amp;')}\n"
             f"<b>Дата:</b> {todo_obj.due_date.strftime('%d.%m.%Y')}\n"
             f"<b>Приоритет:</b> {todo_obj.priority}\n"
             f"<b>Ежедневная:</b> {'Да' if todo_obj.is_daily else 'Нет'}",
@@ -1050,12 +1454,17 @@ async def todo_edit_date_message_handler(message: types.Message, state: FSMConte
         due_date = date.today() + timedelta(days=7)
     else:
         try:
+            # Пробуем сначала полный формат (4 цифры года)
             due_date = datetime.strptime(date_text, "%d.%m.%Y").date()
         except ValueError:
-            await message.answer(
-                "❌ Неверный формат даты. Используйте ДД.ММ.ГГГГ или 'сегодня', 'завтра', 'через неделю'"
-            )
-            return
+            try:
+                # Пробуем короткий формат (2 цифры года)
+                due_date = datetime.strptime(date_text, "%d.%m.%y").date()
+            except ValueError:
+                await message.answer(
+                    "❌ Неверный формат даты. Используйте ДД.ММ.ГГГГ или ДД.ММ.ГГ или 'сегодня', 'завтра', 'через неделю'"
+                )
+                return
     
     data = await state.get_data()
     todo_id = data.get("todo_id")
@@ -1086,7 +1495,7 @@ async def todo_edit_date_message_handler(message: types.Message, state: FSMConte
         await message.answer(
             f"📝 <b>Задача обновлена:</b>\n\n"
             f"<b>Название:</b> {todo_obj.title}\n"
-            f"<b>Описание:</b> {todo_obj.description or 'Не указано'}\n"
+            f"<b>Описание:</b> {(todo_obj.description or 'Не указано').replace('<', '&lt;').replace('>', '&gt;').replace('&', '&amp;')}\n"
             f"<b>Дата:</b> {todo_obj.due_date.strftime('%d.%m.%Y')}\n"
             f"<b>Приоритет:</b> {todo_obj.priority}\n"
             f"<b>Ежедневная:</b> {'Да' if todo_obj.is_daily else 'Нет'}",
@@ -1095,3 +1504,101 @@ async def todo_edit_date_message_handler(message: types.Message, state: FSMConte
         )
     
     await state.clear()
+
+
+@router.message(Command("test_todo_reminder"))
+async def test_todo_reminder(message: types.Message) -> None:
+    """Отправляет тестовое напоминание по to-do задаче для проверки."""
+    user = message.from_user
+    if not user:
+        return
+    
+    try:
+        await message.answer("🧪 Отправляю тестовое напоминание по задаче...")
+        await send_test_todo_reminder(user.id, "Тестовая задача", message.bot)
+        
+    except Exception as e:
+        await message.answer(f"❌ Ошибка отправки тестового напоминания: {str(e)}")
+
+
+@router.message(Command("test_goal_tasks"))
+async def test_goal_tasks(message: types.Message) -> None:
+    """Тестирует создание задач на основе целей."""
+    user = message.from_user
+    if not user:
+        return
+    
+    try:
+        async with session_scope() as session:
+            db_user = (await session.execute(select(User).where(User.telegram_id == user.id))).scalar_one()
+            
+            # Создаем задачи на основе целей
+            from app.services.daily_tasks_manager import create_goal_based_tasks
+            created_tasks = await create_goal_based_tasks(session, db_user.id)
+        
+        if created_tasks:
+            await message.answer(
+                f"✅ Создано {len(created_tasks)} задач на основе целей!\n\n"
+                f"Проверьте раздел 'Ежедневные дела' или 'Задачи на основе целей' в меню To-Do."
+            )
+        else:
+            await message.answer(
+                "ℹ️ Нет активных целей для создания задач.\n\n"
+                "Создайте цели в разделе 'Цели', и система автоматически будет создавать ежедневные задачи для их достижения!"
+            )
+        
+    except Exception as e:
+        await message.answer(f"❌ Ошибка создания задач на основе целей: {str(e)}")
+
+
+@router.message(Command("reset_goal_tasks"))
+async def reset_goal_tasks(message: types.Message) -> None:
+    """Сбрасывает и создает заново задачи на основе целей."""
+    user = message.from_user
+    if not user:
+        return
+    
+    try:
+        async with session_scope() as session:
+            db_user = (await session.execute(select(User).where(User.telegram_id == user.id))).scalar_one()
+            
+            # Сбрасываем задачи на основе целей
+            from app.services.daily_tasks_manager import GoalTasksManager
+            await GoalTasksManager.reset_daily_goal_tasks(session, db_user.id)
+            
+            # Создаем новые задачи на основе активных целей
+            created_tasks = await GoalTasksManager.create_daily_tasks_from_goals(session, db_user.id)
+        
+        await message.answer(
+            f"🔄 Задачи на основе целей сброшены и созданы заново!\n\n"
+            f"Создано {len(created_tasks)} новых задач.\n\n"
+            f"Проверьте раздел 'Ежедневные дела' или 'Задачи на основе целей' в меню To-Do."
+        )
+        
+    except Exception as e:
+        await message.answer(f"❌ Ошибка сброса задач на основе целей: {str(e)}")
+
+
+@router.message(Command("test_nutrition_todos"))
+async def test_nutrition_todos(message: types.Message) -> None:
+    """Тестирует создание задач питания."""
+    user = message.from_user
+    if not user:
+        return
+    
+    try:
+        async with session_scope() as session:
+            db_user = (await session.execute(select(User).where(User.telegram_id == user.id))).scalar_one()
+            
+            # Создаем задачи питания
+            from app.services.nutrition_todo_manager import create_nutrition_todos_for_user
+            await create_nutrition_todos_for_user(session, db_user.id)
+        
+        await message.answer(
+            "✅ Задачи питания созданы!\n\n"
+            "Проверьте ваш To-Do список - там должны появиться задачи для времени готовки и покупок.\n\n"
+            "Задачи создаются автоматически каждый день в 6:00 по вашему времени."
+        )
+        
+    except Exception as e:
+        await message.answer(f"❌ Ошибка создания задач питания: {str(e)}")
