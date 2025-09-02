@@ -22,6 +22,11 @@ from app.services.todo_reminders import send_test_todo_reminder
 router = Router()
 
 
+def escape_html(text: str) -> str:
+    """Экранирует специальные HTML-символы для безопасного отображения"""
+    return text.replace("<", "&lt;").replace(">", "&gt;").replace("&", "&amp;")
+
+
 class TodoStates(StatesGroup):
     waiting_title = State()
     waiting_description = State()
@@ -410,7 +415,7 @@ async def todo_list_handler(cb: types.CallbackQuery) -> None:
         priority_icons = {"high": "🔴", "medium": "🟡", "low": "🟢"}
         status_icon = "✅" if todo.is_completed else "⭕"
         # Экранируем HTML-символы в названии задачи
-        safe_title = todo.title.replace("<", "&lt;").replace(">", "&gt;").replace("&", "&amp;")
+        safe_title = escape_html(todo.title)
         
         # Добавляем информацию о напоминаниях
         reminder_info = ""
@@ -475,7 +480,7 @@ async def todo_completed_handler(cb: types.CallbackQuery) -> None:
         
         priority_icons = {"high": "🔴", "medium": "🟡", "low": "🟢"}
         # Экранируем HTML-символы в названии задачи
-        safe_title = todo.title.replace("<", "&lt;").replace(">", "&gt;").replace("&", "&amp;")
+        safe_title = escape_html(todo.title)
         
         # Добавляем информацию о напоминаниях
         reminder_info = ""
@@ -548,7 +553,7 @@ async def todo_view_handler(cb: types.CallbackQuery) -> None:
         
         if todo_obj.description:
             # Экранируем HTML-символы в описании
-            safe_description = todo_obj.description.replace("<", "&lt;").replace(">", "&gt;").replace("&", "&amp;")
+            safe_description = escape_html(todo_obj.description)
             message_text += f"\n\n📄 <b>Описание:</b>\n{safe_description}"
     
     await cb.message.edit_text(
@@ -703,7 +708,9 @@ async def todo_edit_start(cb: types.CallbackQuery) -> None:
     for todo in todos_list:
         priority_icons = {"high": "🔴", "medium": "🟡", "low": "🟢"}
         status_icon = "✅" if todo.is_completed else "⭕"
-        message_text += f"{status_icon} {priority_icons[todo.priority]} {todo.title}\n"
+        # Экранируем специальные символы в названии задачи
+        safe_title = escape_html(todo.title)
+        message_text += f"{status_icon} {priority_icons[todo.priority]} {safe_title}\n"
     
     # Создаем клавиатуру для выбора задачи
     todos_data = [(todo.id, todo.title, todo.is_completed) for todo in todos_list]
@@ -748,7 +755,9 @@ async def todo_delete_start(cb: types.CallbackQuery) -> None:
     for todo in todos_list:
         priority_icons = {"high": "🔴", "medium": "🟡", "low": "🟢"}
         status_icon = "✅" if todo.is_completed else "⭕"
-        message_text += f"{status_icon} {priority_icons[todo.priority]} {todo.title}\n"
+        # Экранируем специальные символы в названии задачи
+        safe_title = escape_html(todo.title)
+        message_text += f"{status_icon} {priority_icons[todo.priority]} {safe_title}\n"
     
     # Создаем клавиатуру для выбора задачи
     todos_data = [(todo.id, todo.title, todo.is_completed) for todo in todos_list]
@@ -797,7 +806,9 @@ async def todo_complete_start(cb: types.CallbackQuery) -> None:
     
     for todo in todos_list:
         priority_icons = {"high": "🔴", "medium": "🟡", "low": "🟢"}
-        message_text += f"⭕ {priority_icons[todo.priority]} {todo.title}\n"
+        # Экранируем специальные символы в названии задачи
+        safe_title = escape_html(todo.title)
+        message_text += f"⭕ {priority_icons[todo.priority]} {safe_title}\n"
     
     # Создаем клавиатуру для выбора задачи
     todos_data = [(todo.id, todo.title, todo.is_completed) for todo in todos_list]
@@ -868,7 +879,9 @@ async def todo_daily_handler(cb: types.CallbackQuery) -> None:
         for todo in regular_list:
             priority_icons = {"high": "🔴", "medium": "🟡", "low": "🟢"}
             status_icon = "✅" if todo.is_completed else "⭕"
-            message_text += f"{status_icon} {priority_icons[todo.priority]} {todo.title}\n"
+            # Экранируем специальные символы в названии задачи
+            safe_title = escape_html(todo.title)
+            message_text += f"{status_icon} {priority_icons[todo.priority]} {safe_title}\n"
         message_text += "\n"
     
     # Секция задач на основе целей
@@ -878,7 +891,9 @@ async def todo_daily_handler(cb: types.CallbackQuery) -> None:
             priority_icons = {"high": "🔴", "medium": "🟡", "low": "🟢"}
             status_icon = "✅" if todo.is_completed else "⭕"
             goal_title = todo.description.replace("Ежедневная задача для достижения цели: ", "") if todo.description else ""
-            message_text += f"{status_icon} {priority_icons[todo.priority]} {todo.title}\n"
+            # Экранируем специальные символы в названии задачи
+            safe_title = escape_html(todo.title)
+            message_text += f"{status_icon} {priority_icons[todo.priority]} {safe_title}\n"
             message_text += f"   📎 Цель: {goal_title}\n"
         message_text += "\n"
     
@@ -954,7 +969,9 @@ async def todo_view_tomorrow_handler(cb: types.CallbackQuery) -> None:
     for todo in tomorrow_list:
         priority_icons = {"high": "🔴", "medium": "🟡", "low": "🟢"}
         status_icon = "✅" if todo.is_completed else "⭕"
-        message_text += f"{status_icon} {priority_icons[todo.priority]} {todo.title}\n"
+        # Экранируем специальные символы в названии задачи
+        safe_title = escape_html(todo.title)
+        message_text += f"{status_icon} {priority_icons[todo.priority]} {safe_title}\n"
     
     await cb.message.edit_text(
         message_text,
@@ -1246,8 +1263,10 @@ async def todo_goal_based_handler(cb: types.CallbackQuery) -> None:
         status_icon = "✅" if todo.is_completed else "⭕"
         # Убираем префикс из описания для отображения и экранируем HTML
         goal_title = todo.description.replace("Ежедневная задача для достижения цели: ", "") if todo.description else ""
-        safe_goal_title = goal_title.replace("<", "&lt;").replace(">", "&gt;").replace("&", "&amp;")
-        message_text += f"{status_icon} {priority_icons[todo.priority]} {todo.title}\n"
+        safe_goal_title = escape_html(goal_title)
+        # Экранируем специальные символы в названии задачи
+        safe_title = escape_html(todo.title)
+        message_text += f"{status_icon} {priority_icons[todo.priority]} {safe_title}\n"
         message_text += f"   📎 Цель: {safe_goal_title}\n\n"
     
     # Добавляем статистику
@@ -1305,8 +1324,10 @@ async def todo_create_from_goals_handler(cb: types.CallbackQuery) -> None:
     for task in created_tasks:
         priority_icons = {"high": "🔴", "medium": "🟡", "low": "🟢"}
         goal_title = task.description.replace("Ежедневная задача для достижения цели: ", "") if task.description else ""
-        safe_goal_title = goal_title.replace("<", "&lt;").replace(">", "&gt;").replace("&", "&amp;")
-        message_text += f"⭕ {priority_icons[task.priority]} {task.title}\n"
+        safe_goal_title = escape_html(goal_title)
+        # Экранируем специальные символы в названии задачи
+        safe_title = escape_html(task.title)
+        message_text += f"⭕ {priority_icons[task.priority]} {safe_title}\n"
         message_text += f"   📎 Цель: {safe_goal_title}\n\n"
     
     message_text += "💡 Эти задачи будут появляться каждый день автоматически!"

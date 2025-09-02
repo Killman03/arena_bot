@@ -163,15 +163,41 @@ async def generate_perfect_day_plan(user_id: int, session: AsyncSession) -> str:
             ).order_by(Goal.scope.desc())
         )).scalars().all()
         
-        # Получаем задачи на сегодня
+        # Получаем задачи на сегодня с учетом времени напоминаний
         today = date.today()
         today_todos = (await session.execute(
             select(Todo).where(
                 Todo.user_id == user_id,
                 Todo.due_date == today,
                 Todo.is_completed == False
-            ).order_by(Todo.priority.desc())
+            ).order_by(Todo.reminder_time.asc().nullslast(), Todo.priority.desc())
         )).scalars().all()
+        
+        # Предварительная обработка задач для лучшего планирования
+        scheduled_tasks = []
+        unscheduled_tasks = []
+        
+        for todo in today_todos:
+            if todo.reminder_time and todo.is_reminder_active:
+                # Задачи с напоминаниями - планируем точно в указанное время
+                scheduled_tasks.append({
+                    'todo': todo,
+                    'scheduled_time': todo.reminder_time,
+                    'type': 'scheduled'
+                })
+            else:
+                # Задачи без напоминаний - планируем по приоритету
+                unscheduled_tasks.append({
+                    'todo': todo,
+                    'type': 'unscheduled'
+                })
+        
+        # Сортируем запланированные задачи по времени
+        scheduled_tasks.sort(key=lambda x: x['scheduled_time'])
+        
+        # Сортируем незапланированные задачи по приоритету
+        priority_order = {'high': 3, 'medium': 2, 'low': 1}
+        unscheduled_tasks.sort(key=lambda x: priority_order.get(x['todo'].priority, 0), reverse=True)
         
         # Формируем контекст для ИИ
         context_parts = []
@@ -198,12 +224,31 @@ async def generate_perfect_day_plan(user_id: int, session: AsyncSession) -> str:
                 }.get(goal.scope, goal.scope)
                 context_parts.append(f"  • {goal.title} ({scope_text})")
         
-        # Добавляем задачи на сегодня
+        # Добавляем задачи на сегодня с учетом времени напоминаний
         if today_todos:
             context_parts.append("📝 Задачи на сегодня:")
-            for todo in today_todos[:5]:  # Берем первые 5 задач
-                priority_emoji = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(todo.priority, "⚪")
-                context_parts.append(f"  • {priority_emoji} {todo.title}")
+            
+            # Сначала показываем запланированные задачи
+            if scheduled_tasks:
+                context_parts.append("  ⏰ Запланированные задачи:")
+                for task_info in scheduled_tasks[:5]:
+                    todo = task_info['todo']
+                    priority_emoji = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(todo.priority, "⚪")
+                    description_info = ""
+                    if todo.description:
+                        description_info = f" - {todo.description}"
+                    context_parts.append(f"    • {priority_emoji} {todo.title} ⏰{task_info['scheduled_time']}{description_info}")
+            
+            # Затем показываем незапланированные задачи
+            if unscheduled_tasks:
+                context_parts.append("  📋 Остальные задачи:")
+                for task_info in unscheduled_tasks[:5]:
+                    todo = task_info['todo']
+                    priority_emoji = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(todo.priority, "⚪")
+                    description_info = ""
+                    if todo.description:
+                        description_info = f" - {todo.description}"
+                    context_parts.append(f"    • {priority_emoji} {todo.title}{description_info}")
         
         context = "\n".join(context_parts) if context_parts else "Нет дополнительного контекста"
         
@@ -215,11 +260,22 @@ async def generate_perfect_day_plan(user_id: int, session: AsyncSession) -> str:
 
 Создай детальный план идеального дня в стиле гладиаторских тренировок. Используй воинственную, мотивирующую лексику, но сохраняй практичность.
 
+ВАЖНО: При планировании дня обязательно учитывай время напоминаний задач (указано как ⏰ЧЧ:ММ). 
+Задачи с напоминаниями должны быть запланированы точно в указанное время или незадолго до него.
+
 План должен включать:
-1. 🌅 Утреннюю подготовку (5:00-7:00) - работа над главной целью года
-2. ⚔️ Основные тренировки (8:00-18:00) - работа над целями и задачами
+1. 🌅 Утреннюю подготовку (5:00-7:00) - 2 часа сфокусированной работы над главной целью года без отвлечений
+2. ⚔️ Основные тренировки (8:00-18:00) - работа над целями и задачами с учетом времени напоминаний
 3. 🛡️ Вечернюю рутину (18:00-20:00) - подведение итогов, восстановление
 4. 💪 Время для силы духа - чтение, размышления, развитие
+
+ПРАВИЛА ПЛАНИРОВАНИЯ:
+- Задачи с напоминаниями (⏰ЧЧ:ММ) планируй точно в указанное время
+- Учитывай приоритеты задач (🔴 высокий, 🟡 средний, 🟢 низкий)
+- Используй комментарии к задачам для лучшего понимания контекста
+- Распределяй задачи равномерно в течение дня
+- Оставляй время на непредвиденные обстоятельства
+- Сначала размещай запланированные задачи по времени, затем заполняй промежутки незапланированными
 
 ВАЖНЫЕ ПРАВИЛА:
 - НЕ указывай конкретную дату или день недели
@@ -284,30 +340,52 @@ async def create_todo_from_perfect_day(user_id: int, plan_text: str, session: As
                 if any(skip in line.lower() for skip in ['приказ', 'ланисты', 'гладиатору', 'помни', 'битва', 'судьба']):
                     continue
                 
-                # Извлекаем описание задачи
+                # Извлекаем время и описание задачи
+                task_time = None
                 task_desc = ""
+                
+                # Ищем время в формате ЧЧ:ММ
+                import re
+                time_match = re.search(r'(\d{1,2}:\d{2})', line)
+                if time_match:
+                    task_time = time_match.group(1)
+                
+                # Извлекаем описание задачи
                 if '-' in line:
                     parts = line.split('-', 1)
                     if len(parts) > 1:
                         task_desc = parts[1].strip()
                 elif ':' in line:
-                    parts = line.split(':', 1)
-                    if len(parts) > 1:
-                        task_desc = parts[1].strip()
+                    # Если есть время, берем текст после второго двоеточия
+                    if task_time:
+                        time_parts = line.split(task_time, 1)
+                        if len(time_parts) > 1:
+                            task_desc = time_parts[1].strip()
+                            # Убираем лишние символы в начале
+                            task_desc = re.sub(r'^[^\w]*', '', task_desc)
+                    else:
+                        parts = line.split(':', 1)
+                        if len(parts) > 1:
+                            task_desc = parts[1].strip()
                 
                 # Очищаем от эмодзи и лишних символов
                 if task_desc:
-                    # Убираем эмодзи и лишние пробелы
-                    import re
-                    task_desc = re.sub(r'[^\w\s\-\.\,\!\?]', '', task_desc).strip()
+                    # Убираем эмодзи и лишние пробелы, но сохраняем пунктуацию
+                    task_desc = re.sub(r'[^\w\s\-\.\,\!\?\(\)]', '', task_desc).strip()
                     
                     if len(task_desc) > 5:  # Минимальная длина описания
                         # Определяем приоритет на основе времени
                         priority = "medium"
-                        if any(time_indicator in line.lower() for time_indicator in ['утро', '6:', '7:', '8:']):
-                            priority = "high"  # Утренние дела - высокий приоритет
+                        if task_time:
+                            hour = int(task_time.split(':')[0])
+                            if 5 <= hour <= 9:
+                                priority = "high"  # Утренние дела - высокий приоритет
+                            elif hour >= 20:
+                                priority = "low"  # Вечерние дела - низкий приоритет
+                        elif any(time_indicator in line.lower() for time_indicator in ['утро', '6:', '7:', '8:']):
+                            priority = "high"
                         elif any(time_indicator in line.lower() for time_indicator in ['вечер', '20:', '21:', '22:']):
-                            priority = "low"  # Вечерние дела - низкий приоритет
+                            priority = "low"
                         
                         # Создаем задачу
                         new_todo = Todo(
@@ -316,7 +394,9 @@ async def create_todo_from_perfect_day(user_id: int, plan_text: str, session: As
                             description=f"Из плана идеального дня: {line}",
                             due_date=date.today(),
                             priority=priority,
-                            is_daily=False
+                            is_daily=False,
+                            reminder_time=task_time,
+                            is_reminder_active=bool(task_time)
                         )
                         session.add(new_todo)
                         tasks_created += 1

@@ -4,86 +4,13 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="89a35ec9-0a16-473d-bc4d-bafca81fd810" name="Changes" comment="ver 1.6">
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/voit_bot.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/DUPLICATE_REMINDERS_FIX.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/FINANCE_REMINDERS_README.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/FINANCE_TODO_INTEGRATION_README.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/NUTRITION_DAYS_FIX_README.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/NUTRITION_TODO_INTEGRATION_README.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/REPLY_KEYBOARD_README.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/TIMEZONE_IMPLEMENTATION_SUMMARY.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/TIMEZONE_SUPPORT_README.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/TODO_REMINDERS_README.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/handlers/daily_reminders.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/handlers/finance_edit_handlers.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/handlers/quick_actions.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/handlers/quick_actions_fixed.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/handlers/user_settings.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/services/daily_reminders.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/services/daily_tasks_manager.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/services/finance_reminders.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/services/finance_todo_manager.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/services/goal_tasks_manager.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/services/nutrition_plan_generator.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/services/nutrition_todo_manager.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/services/todo_reminders.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/utils/text_formatter.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/utils/timezone_utils.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/migrations/versions/004_add_todo_reminders_and_timezone.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/reminder_status_report.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/reminders_status_report.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/test_finance_reminders.bat" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/test_finance_reminders.ps1" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/test_finance_reminders.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/test_timezone_system.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/timezone_final_fix.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/timezone_fix_summary.md" afterDir="false" />
+    <list default="true" id="89a35ec9-0a16-473d-bc4d-bafca81fd810" name="Changes" comment="ver 2 исправил баги, добавил новые функции">
+      <change afterPath="$PROJECT_DIR$/CHANGES_SUMMARY.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/PERFECT_DAY_PLANNING_README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/test_perfect_day_planning.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/ZIP_IMPORT_SYSTEM.md" beforeDir="false" afterPath="$PROJECT_DIR$/ZIP_IMPORT_SYSTEM.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/bot.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/bot.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/config.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/db/models/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/db/models/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/db/models/book.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/db/models/book.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/db/models/challenge.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/db/models/health.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/db/models/health.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/db/models/todo.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/db/models/todo.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/db/session.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/db/session.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/handlers/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/handlers/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/handlers/analysis.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/handlers/analysis.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/handlers/books.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/handlers/books.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/handlers/challenges.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/handlers/finance_management.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/handlers/finance_management.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/handlers/gladiator_punishments.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/handlers/gladiator_punishments.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/handlers/goals.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/handlers/goals.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/handlers/health.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/handlers/health.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/handlers/help_handlers.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/handlers/help_handlers.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/handlers/menus.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/handlers/menus.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/handlers/nutrition.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/handlers/nutrition.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/handlers/settings.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/handlers/settings_menu.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/handlers/start.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/handlers/start.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/handlers/test_reminders.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/handlers/test_reminders.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/handlers/todo.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/handlers/todo.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/handlers/zip_import.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/handlers/zip_import.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/keyboards/common.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/keyboards/common.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/logging_config.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/logging_config.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/services/challenge_cleanup.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/services/gladiator_punishments.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/gladiator_punishments.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/services/goal_reminders.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/goal_reminders.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/services/google_drive.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/services/google_fit.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/services/health_reminders.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/health_reminders.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/services/llm.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/llm.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/services/nutrition_reminders.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/nutrition_reminders.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/services/zip_importer.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/zip_importer.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/utils/scheduler.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/utils/scheduler.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/env.example" beforeDir="false" afterPath="$PROJECT_DIR$/env.example" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/migrations/versions/004_add_books_tables.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/services/daily_reminders.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/daily_reminders.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -161,7 +88,7 @@
       <workItem from="1756477557926" duration="222000" />
       <workItem from="1756477799549" duration="91000" />
       <workItem from="1756477909416" duration="9957000" />
-      <workItem from="1756597990905" duration="2658000" />
+      <workItem from="1756597990905" duration="12979000" />
     </task>
     <task id="LOCAL-00001" summary="comm">
       <option name="closed" value="true" />
@@ -219,7 +146,23 @@
       <option name="project" value="LOCAL" />
       <updated>1755800011426</updated>
     </task>
-    <option name="localTasksCounter" value="8" />
+    <task id="LOCAL-00008" summary="ver 2 исправил баги, добавил новые функции">
+      <option name="closed" value="true" />
+      <created>1756693181842</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1756693181842</updated>
+    </task>
+    <task id="LOCAL-00009" summary="ver 2 исправил баги, добавил новые функции">
+      <option name="closed" value="true" />
+      <created>1756693333978</created>
+      <option name="number" value="00009" />
+      <option name="presentableId" value="LOCAL-00009" />
+      <option name="project" value="LOCAL" />
+      <updated>1756693333978</updated>
+    </task>
+    <option name="localTasksCounter" value="10" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -232,6 +175,7 @@
     <MESSAGE value="ver 1.4" />
     <MESSAGE value="ver 1.5" />
     <MESSAGE value="ver 1.6" />
-    <option name="LAST_COMMIT_MESSAGE" value="ver 1.6" />
+    <MESSAGE value="ver 2 исправил баги, добавил новые функции" />
+    <option name="LAST_COMMIT_MESSAGE" value="ver 2 исправил баги, добавил новые функции" />
   </component>
 </project>
